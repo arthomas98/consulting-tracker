@@ -1,0 +1,7 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    @apply bg-gradient-to-br from-slate-50 to-blue-50/30 text-gray-900 min-h-screen;
+  }
+}
