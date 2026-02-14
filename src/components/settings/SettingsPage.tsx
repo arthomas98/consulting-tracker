@@ -1,6 +1,8 @@
 import { useRef, useState } from 'react';
 import { useStorage } from '../../contexts/StorageContext';
 import type { BusinessProfile } from '../../utils/storage';
+import { initGapi, initGis, requestAccessToken, revokeToken, hasValidToken } from '../../services/googleAuth';
+import { syncToSheets, getSpreadsheetUrl, getSpreadsheetId, clearSpreadsheetId } from '../../services/syncManager';
 
 const STORAGE_KEYS = {
   companies: 'ct_companies',
@@ -18,6 +20,11 @@ export default function SettingsPage() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [editProfile, setEditProfile] = useState<BusinessProfile>({ ...profile });
   const [profileSaved, setProfileSaved] = useState(false);
+
+  // Google Sheets state
+  const [syncing, setSyncing] = useState(false);
+  const [sheetsConnected, setSheetsConnected] = useState(!!getSpreadsheetId());
+  const [lastSyncMessage, setLastSyncMessage] = useState('');
 
   function handleSaveProfile() {
     saveProfile(editProfile);
@@ -80,6 +87,46 @@ export default function SettingsPage() {
     // Reset file input so same file can be re-selected
     if (fileRef.current) fileRef.current.value = '';
   }
+
+  async function handleSyncToSheets() {
+    setSyncing(true);
+    setLastSyncMessage('');
+    try {
+      await initGapi();
+      await initGis();
+
+      // Request token if we don't have one
+      if (!hasValidToken()) {
+        const token = await requestAccessToken();
+        gapi.client.setToken({ access_token: token } as ReturnType<typeof gapi.client.getToken>);
+      }
+
+      const spreadsheetId = await syncToSheets({
+        companies, projects, timeEntries, invoices, profile,
+      });
+
+      setSheetsConnected(true);
+      setLastSyncMessage(`Synced at ${new Date().toLocaleTimeString()}`);
+      setMessage({ type: 'success', text: `Data synced to Google Sheets. Spreadsheet ID: ${spreadsheetId}` });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      setLastSyncMessage(`Sync failed: ${msg}`);
+      setMessage({ type: 'error', text: `Google Sheets sync failed: ${msg}` });
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  function handleDisconnectSheets() {
+    if (!confirm('Disconnect Google Sheets? The spreadsheet will remain in your Google Drive but will no longer sync.')) return;
+    revokeToken();
+    clearSpreadsheetId();
+    setSheetsConnected(false);
+    setLastSyncMessage('');
+    setMessage({ type: 'success', text: 'Disconnected from Google Sheets.' });
+  }
+
+  const sheetUrl = getSpreadsheetUrl();
 
   return (
     <div>
@@ -152,6 +199,49 @@ export default function SettingsPage() {
               </button>
               {profileSaved && <span className="text-sm text-green-600">Saved!</span>}
             </div>
+          </div>
+        </div>
+
+        {/* Google Sheets Sync */}
+        <div className="bg-white border rounded-xl p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-gray-700 mb-1">Google Sheets Backup</h3>
+          <p className="text-sm text-gray-500 mb-4">Push your data to a Google Sheet in your Drive for backup. Your data stays in your Google account.</p>
+
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleSyncToSheets}
+                disabled={syncing}
+                className="bg-green-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {syncing ? 'Syncing...' : sheetsConnected ? 'Sync Now' : 'Connect & Sync'}
+              </button>
+              {sheetsConnected && (
+                <button
+                  onClick={handleDisconnectSheets}
+                  className="text-sm text-gray-500 hover:text-gray-700"
+                >
+                  Disconnect
+                </button>
+              )}
+            </div>
+
+            {lastSyncMessage && (
+              <p className="text-xs text-gray-500">{lastSyncMessage}</p>
+            )}
+
+            {sheetUrl && (
+              <p className="text-sm">
+                <a
+                  href={sheetUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:text-blue-800 underline"
+                >
+                  Open spreadsheet in Google Sheets
+                </a>
+              </p>
+            )}
           </div>
         </div>
 

@@ -14,11 +14,15 @@ Local-first React SPA for tracking consulting time, invoicing, and payments.
 src/
   types/           # TypeScript interfaces (Company, Project, TimeEntry, Invoice, Currency)
   utils/           # Pure utility functions
-    storage.ts     # localStorage CRUD layer
+    storage.ts     # localStorage CRUD layer (incl. BusinessProfile)
     calculations.ts # entryAmount(), totalsByCurrency(), parseHoursInput(), getEntryPaymentStatus()
     dateUtils.ts   # Date helpers (ISO string based, format: YYYY-MM-DD)
     formatCurrency.ts # Intl.NumberFormat wrappers, formatCurrencyShort for charts
     csv.ts         # CSV export
+  services/
+    googleAuth.ts      # OAuth2 token flow (GIS + GAPI init)
+    sheetsDataMapper.ts # Data-to-rows mapping for each entity
+    syncManager.ts     # Spreadsheet creation, sheet management, batch sync
   contexts/
     StorageContext.tsx # Global state provider with all CRUD operations
   components/
@@ -29,7 +33,9 @@ src/
     invoices/InvoicesPage.tsx, CreateInvoice.tsx, InvoiceDetail.tsx
     companies/CompaniesPage.tsx # Company CRUD with inline project management
     reports/ReportsPage.tsx # 3-tab reports with expandable company detail rows
+    settings/SettingsPage.tsx # Business profile, export/import, Google Sheets sync
     shared/Modal.tsx, Badge.tsx
+  google.d.ts        # TypeScript declarations for google.accounts.oauth2 and gapi
 ```
 
 ## Key Patterns
@@ -82,5 +88,30 @@ npm run dev   # Vite dev server on localhost:5173
 npm run build # Production build
 ```
 
-## No git repo
-This project lives in Dropbox and syncs across machines. No git is configured.
+### Business Profile & Invoicing
+- Business profile (name, address, email, phone, EIN) stored in localStorage (`ct_profile`)
+- Profile fields editable in Settings page
+- Invoice print/PDF via `window.open()` with self-contained HTML + `window.print()`
+- Print template includes profile info, "Bill To" client details, line items, totals
+
+### Settings page
+- Gear icon in header (not a nav tab) links to `/settings`
+- Business Profile form
+- JSON Export/Import (full data backup/restore)
+- Google Sheets Backup section (connect, sync, disconnect, link to spreadsheet)
+
+### Google Sheets sync
+- One-way push: app → Google Sheets (backup only, not bidirectional)
+- OAuth2 via Google Identity Services (GIS) token client
+- Client ID embedded in `src/services/googleAuth.ts`
+- Scopes: `spreadsheets` + `drive.file`
+- Creates a "Consulting Tracker Backup" spreadsheet with 5 tabs: Companies, Projects, TimeEntries, Invoices, Profile
+- Full replace on each sync (clear all sheets, batch write)
+- Spreadsheet ID persisted in localStorage (`ct_sheets_spreadsheetId`)
+- Service files: `src/services/googleAuth.ts`, `src/services/sheetsDataMapper.ts`, `src/services/syncManager.ts`
+- Type declarations: `src/google.d.ts`
+- Google API scripts loaded in `index.html` (GIS + GAPI)
+
+## Git & GitHub
+- Repo: https://github.com/arthomas98/consulting-tracker (public)
+- Also synced via Dropbox across machines
