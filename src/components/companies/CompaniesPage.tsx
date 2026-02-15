@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useStorage } from '../../contexts/StorageContext';
-import type { Company, Project, Currency } from '../../types';
+import type { Company, Currency } from '../../types';
 import { formatCurrency } from '../../utils/formatCurrency';
 import Modal from '../shared/Modal';
 import Badge from '../shared/Badge';

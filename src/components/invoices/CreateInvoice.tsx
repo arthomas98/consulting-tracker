@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useStorage } from '../../contexts/StorageContext';
-import type { Invoice, TimeEntry } from '../../types';
-import { totalHours, totalAmount, generateInvoiceNumber, entryAmount } from '../../utils/calculations';
+import type { Invoice } from '../../types';
+import { totalHours, totalAmount, generateInvoiceNumber } from '../../utils/calculations';
 import { formatDate, today } from '../../utils/dateUtils';
 import { formatCurrency, formatHours } from '../../utils/formatCurrency';
 

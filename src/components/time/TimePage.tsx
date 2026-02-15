@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useStorage } from '../../contexts/StorageContext';
 import type { TimeEntry } from '../../types';
-import { getEntryPaymentStatus, entryAmount } from '../../utils/calculations';
+import { getEntryPaymentStatus } from '../../utils/calculations';
 import { formatDate, today, getWeekDates } from '../../utils/dateUtils';
 import { formatCurrency, formatHours } from '../../utils/formatCurrency';
 import TimeEntryForm from './TimeEntryForm';
