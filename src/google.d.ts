@@ -11,6 +11,7 @@ declare namespace google.accounts.oauth2 {
     client_id: string;
     scope: string;
     callback: (response: TokenResponse) => void;
+    error_callback?: (error: { type: string; message?: string }) => void;
   }): TokenClient;
   function revoke(token: string): void;
 }

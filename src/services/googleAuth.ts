@@ -40,10 +40,26 @@ export async function initGis(): Promise<void> {
 let pendingResolve: ((token: string) => void) | null = null;
 let pendingReject: ((err: Error) => void) | null = null;
 
+const AUTH_TIMEOUT_MS = 120000; // 2 minutes
+
 export function requestAccessToken(): Promise<string> {
   return new Promise((resolve, reject) => {
     pendingResolve = resolve;
     pendingReject = reject;
+
+    const timer = setTimeout(() => {
+      if (pendingReject) {
+        pendingReject(new Error('Sign-in timed out. Please try again.'));
+        pendingResolve = null;
+        pendingReject = null;
+      }
+    }, AUTH_TIMEOUT_MS);
+
+    function cleanup() {
+      clearTimeout(timer);
+      pendingResolve = null;
+      pendingReject = null;
+    }
 
     if (!tokenClient) {
       tokenClient = google.accounts.oauth2.initTokenClient({
@@ -55,8 +71,17 @@ export function requestAccessToken(): Promise<string> {
           } else {
             pendingResolve?.(response.access_token);
           }
-          pendingResolve = null;
-          pendingReject = null;
+          cleanup();
+        },
+        error_callback: (error) => {
+          if (error.type === 'popup_closed') {
+            pendingReject?.(new Error('Sign-in cancelled.'));
+          } else if (error.type === 'popup_failed_to_open') {
+            pendingReject?.(new Error('Popup blocked. Please allow popups for this site and try again.'));
+          } else {
+            pendingReject?.(new Error(error.message || `Sign-in error: ${error.type}`));
+          }
+          cleanup();
         },
       });
     }
