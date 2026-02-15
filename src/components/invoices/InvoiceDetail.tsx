@@ -13,6 +13,15 @@ interface Props {
 
 const statusColor: Record<string, string> = { draft: 'gray', sent: 'yellow', paid: 'green' };
 
+function esc(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function buildPrintHtml(
   invoice: Invoice,
   companyName: string,
@@ -25,10 +34,10 @@ function buildPrintHtml(
 ) {
   const rows = entries.map((e) =>
     `<tr>
-      <td style="padding:6px 8px;border-bottom:1px solid #eee;color:#555">${e.date}</td>
-      <td style="padding:6px 8px;border-bottom:1px solid #eee">${e.project ? `<span style="color:#999;margin-right:4px">[${e.project}]</span>` : ''}${e.description}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #eee;color:#555">${esc(e.date)}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #eee">${e.project ? `<span style="color:#999;margin-right:4px">[${esc(e.project)}]</span>` : ''}${esc(e.description)}</td>
       <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right">${e.hours > 0 ? formatHours(e.hours) : '—'}</td>
-      <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right">${e.amount}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right">${esc(e.amount)}</td>
     </tr>`
   ).join('');
 
@@ -36,16 +45,16 @@ function buildPrintHtml(
 
   const profileHtml = hasProfile ? `
     <div class="from">
-      ${profile.name ? `<div style="font-weight:600;font-size:16px">${profile.name}</div>` : ''}
-      ${profile.address ? `<div>${profile.address.replace(/\n/g, '<br>')}</div>` : ''}
-      ${profile.email ? `<div>${profile.email}</div>` : ''}
-      ${profile.phone ? `<div>${profile.phone}</div>` : ''}
-      ${profile.ein ? `<div style="margin-top:4px">EIN: ${profile.ein}</div>` : ''}
+      ${profile.name ? `<div style="font-weight:600;font-size:16px">${esc(profile.name)}</div>` : ''}
+      ${profile.address ? `<div>${esc(profile.address).replace(/\n/g, '<br>')}</div>` : ''}
+      ${profile.email ? `<div>${esc(profile.email)}</div>` : ''}
+      ${profile.phone ? `<div>${esc(profile.phone)}</div>` : ''}
+      ${profile.ein ? `<div style="margin-top:4px">EIN: ${esc(profile.ein)}</div>` : ''}
     </div>` : '';
 
   return `<!DOCTYPE html>
 <html><head>
-<title>Invoice ${invoice.invoiceNumber} - ${companyName}</title>
+<title>Invoice ${esc(invoice.invoiceNumber || '')} - ${esc(companyName)}</title>
 <style>
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #222; max-width: 800px; margin: 0 auto; padding: 40px; }
   .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 30px; }
@@ -71,11 +80,11 @@ function buildPrintHtml(
 <div class="parties">
   <div class="party">
     <div class="label">Bill To</div>
-    <div style="font-weight:600">${companyName}</div>
+    <div style="font-weight:600">${esc(companyName)}</div>
   </div>
   <div class="party" style="text-align:right">
     <div class="label">Invoice Details</div>
-    <div><span style="color:#888">Invoice #:</span> ${invoice.invoiceNumber || '—'}</div>
+    <div><span style="color:#888">Invoice #:</span> ${esc(invoice.invoiceNumber || '—')}</div>
     <div><span style="color:#888">Date:</span> ${formatDate(invoice.invoiceDate)}</div>
     <div><span style="color:#888">Rate:</span> ${rate}/hr</div>
   </div>
@@ -89,7 +98,7 @@ function buildPrintHtml(
     <td style="text-align:right">${totalAmount}</td>
   </tr></tfoot>
 </table>
-${notes ? `<div class="notes"><strong>Notes:</strong> ${notes}</div>` : ''}
+${notes ? `<div class="notes"><strong>Notes:</strong> ${esc(notes)}</div>` : ''}
 <script>window.onload=function(){window.print()}</script>
 </body></html>`;
 }

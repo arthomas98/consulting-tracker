@@ -3,10 +3,14 @@ import { getEntryPaymentStatus, entryAmount } from './calculations';
 import { formatDate } from './dateUtils';
 
 function escapeCsv(val: string): string {
-  if (val.includes(',') || val.includes('"') || val.includes('\n')) {
-    return `"${val.replace(/"/g, '""')}"`;
+  let escaped = val;
+  if (/^[=+\-@\t\r]/.test(escaped)) {
+    escaped = "'" + escaped;
   }
-  return val;
+  if (escaped.includes(',') || escaped.includes('"') || escaped.includes('\n')) {
+    return `"${escaped.replace(/"/g, '""')}"`;
+  }
+  return escaped;
 }
 
 function toCsvRow(cells: string[]): string {
