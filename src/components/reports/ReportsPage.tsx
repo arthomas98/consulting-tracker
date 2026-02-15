@@ -212,11 +212,12 @@ export default function ReportsPage() {
                   </div>
                 );
               })}
-              <div className="bg-white border rounded-lg px-4 py-3">
+              <div className="bg-white border rounded-lg">
                 {currencyTotals.map((t) => (
-                  <div key={t.currency} className="flex justify-between text-sm font-semibold">
-                    <span>Total ({t.currency})</span>
-                    <span>{formatHours(t.hours)}h &middot; {formatCurrency(t.amount, t.currency)}</span>
+                  <div key={t.currency} className="flex items-center text-sm font-semibold">
+                    <span className="px-4 py-3 flex-1">Total ({t.currency})</span>
+                    <span className="px-4 py-3 text-right text-gray-500 w-28">{formatHours(t.hours)}h</span>
+                    <span className="px-4 py-3 text-right w-36">{formatCurrency(t.amount, t.currency)}</span>
                   </div>
                 ))}
               </div>
