@@ -36,18 +36,27 @@ export async function initGis(): Promise<void> {
   gisInitialized = true;
 }
 
+// Track the latest pending resolve/reject so concurrent calls work correctly
+let pendingResolve: ((token: string) => void) | null = null;
+let pendingReject: ((err: Error) => void) | null = null;
+
 export function requestAccessToken(): Promise<string> {
   return new Promise((resolve, reject) => {
+    pendingResolve = resolve;
+    pendingReject = reject;
+
     if (!tokenClient) {
       tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
         scope: SCOPES,
         callback: (response) => {
           if (response.error) {
-            reject(new Error(response.error));
+            pendingReject?.(new Error(response.error));
           } else {
-            resolve(response.access_token);
+            pendingResolve?.(response.access_token);
           }
+          pendingResolve = null;
+          pendingReject = null;
         },
       });
     }

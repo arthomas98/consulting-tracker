@@ -1,4 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom';
+import { useSync } from '../../contexts/SyncContext';
 
 const tabs = [
   { to: '/', label: 'Dashboard' },
@@ -7,6 +8,44 @@ const tabs = [
   { to: '/companies', label: 'Companies' },
   { to: '/reports', label: 'Reports' },
 ];
+
+function SyncIndicator() {
+  const { syncStatus } = useSync();
+
+  if (!syncStatus.isConnected && syncStatus.state === 'idle') return null;
+
+  const isSpinning = syncStatus.state === 'pushing' || syncStatus.state === 'pulling';
+  const isError = syncStatus.state === 'error';
+
+  const title = isSpinning
+    ? syncStatus.state === 'pushing' ? 'Syncing to Sheets...' : 'Pulling from Sheets...'
+    : isError
+      ? `Sync error: ${syncStatus.lastError}`
+      : syncStatus.lastPushAt
+        ? `Synced at ${syncStatus.lastPushAt.toLocaleTimeString()}`
+        : 'Connected to Google Sheets';
+
+  return (
+    <span className="p-1.5" title={title}>
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 20 20"
+        fill="currentColor"
+        className={`w-4.5 h-4.5 ${
+          isSpinning ? 'text-white animate-pulse' : isError ? 'text-amber-300' : 'text-green-300'
+        }`}
+      >
+        {isError ? (
+          // Cloud with exclamation
+          <path fillRule="evenodd" d="M5.5 17a4.5 4.5 0 0 1-1.44-8.765 4.5 4.5 0 0 1 8.302-3.046 3.5 3.5 0 0 1 4.504 4.272A4 4 0 0 1 15 17H5.5Zm5.25-9.25a.75.75 0 0 0-1.5 0v4a.75.75 0 0 0 1.5 0v-4Zm-.75 7a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Z" clipRule="evenodd" />
+        ) : (
+          // Cloud with checkmark
+          <path fillRule="evenodd" d="M5.5 17a4.5 4.5 0 0 1-1.44-8.765 4.5 4.5 0 0 1 8.302-3.046 3.5 3.5 0 0 1 4.504 4.272A4 4 0 0 1 15 17H5.5Zm8.022-6.078-3.5 3.5a.75.75 0 0 1-1.06 0l-2-2a.75.75 0 0 1 1.06-1.06l1.47 1.47 2.97-2.97a.75.75 0 0 1 1.06 1.06Z" clipRule="evenodd" />
+        )}
+      </svg>
+    </span>
+  );
+}
 
 export default function AppLayout() {
   return (
@@ -32,10 +71,11 @@ export default function AppLayout() {
                   {tab.label}
                 </NavLink>
               ))}
+              <SyncIndicator />
               <NavLink
                 to="/settings"
                 className={({ isActive }) =>
-                  `ml-2 p-1.5 rounded-md transition-colors ${
+                  `ml-1 p-1.5 rounded-md transition-colors ${
                     isActive
                       ? 'bg-white/20 text-white'
                       : 'text-indigo-200 hover:text-white hover:bg-white/10'

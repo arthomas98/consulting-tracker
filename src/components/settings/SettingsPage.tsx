@@ -1,8 +1,7 @@
 import { useRef, useState } from 'react';
 import { useStorage } from '../../contexts/StorageContext';
+import { useSync } from '../../contexts/SyncContext';
 import type { BusinessProfile } from '../../utils/storage';
-import { initGapi, initGis, requestAccessToken, revokeToken, hasValidToken } from '../../services/googleAuth';
-import { syncToSheets, getSpreadsheetUrl, getSpreadsheetId, clearSpreadsheetId } from '../../services/syncManager';
 
 const STORAGE_KEYS = {
   companies: 'ct_companies',
@@ -16,15 +15,11 @@ const EXPECTED_KEYS = ['companies', 'projects', 'timeEntries', 'invoices'] as co
 
 export default function SettingsPage() {
   const { companies, projects, timeEntries, invoices, profile, saveProfile, refresh } = useStorage();
+  const { syncStatus, forcePush, forcePull, connect, disconnect, spreadsheetUrl, triggerPush } = useSync();
   const fileRef = useRef<HTMLInputElement>(null);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [editProfile, setEditProfile] = useState<BusinessProfile>({ ...profile });
   const [profileSaved, setProfileSaved] = useState(false);
-
-  // Google Sheets state
-  const [syncing, setSyncing] = useState(false);
-  const [sheetsConnected, setSheetsConnected] = useState(!!getSpreadsheetId());
-  const [lastSyncMessage, setLastSyncMessage] = useState('');
 
   function handleSaveProfile() {
     saveProfile(editProfile);
@@ -62,7 +57,7 @@ export default function SettingsPage() {
           }
         }
 
-        if (!confirm(`This will replace all your current data with:\n\n• ${data.companies.length} companies\n• ${data.projects.length} projects\n• ${data.timeEntries.length} time entries\n• ${data.invoices.length} invoices\n\nContinue?`)) {
+        if (!confirm(`This will replace all your current data with:\n\n\u2022 ${data.companies.length} companies\n\u2022 ${data.projects.length} projects\n\u2022 ${data.timeEntries.length} time entries\n\u2022 ${data.invoices.length} invoices\n\nContinue?`)) {
           return;
         }
 
@@ -78,6 +73,9 @@ export default function SettingsPage() {
         refresh();
         setEditProfile(data.profile || profile);
         setMessage({ type: 'success', text: `Imported ${data.companies.length} companies, ${data.projects.length} projects, ${data.timeEntries.length} time entries, ${data.invoices.length} invoices.` });
+
+        // Push imported data to Sheets if connected
+        triggerPush();
       } catch {
         setMessage({ type: 'error', text: 'Failed to parse file. Please select a valid JSON backup.' });
       }
@@ -88,45 +86,55 @@ export default function SettingsPage() {
     if (fileRef.current) fileRef.current.value = '';
   }
 
-  async function handleSyncToSheets() {
-    setSyncing(true);
-    setLastSyncMessage('');
+  async function handleSyncNow() {
+    setMessage(null);
     try {
-      await initGapi();
-      await initGis();
-
-      // Request token if we don't have one
-      if (!hasValidToken()) {
-        const token = await requestAccessToken();
-        gapi.client.setToken({ access_token: token } as ReturnType<typeof gapi.client.getToken>);
-      }
-
-      const spreadsheetId = await syncToSheets({
-        companies, projects, timeEntries, invoices, profile,
-      });
-
-      setSheetsConnected(true);
-      setLastSyncMessage(`Synced at ${new Date().toLocaleTimeString()}`);
-      setMessage({ type: 'success', text: `Data synced to Google Sheets. Spreadsheet ID: ${spreadsheetId}` });
+      await forcePush();
+      setMessage({ type: 'success', text: `Data synced to Google Sheets.` });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
-      setLastSyncMessage(`Sync failed: ${msg}`);
-      setMessage({ type: 'error', text: `Google Sheets sync failed: ${msg}` });
-    } finally {
-      setSyncing(false);
+      setMessage({ type: 'error', text: `Sync failed: ${msg}` });
     }
   }
 
-  function handleDisconnectSheets() {
-    if (!confirm('Disconnect Google Sheets? The spreadsheet will remain in your Google Drive but will no longer sync.')) return;
-    revokeToken();
-    clearSpreadsheetId();
-    setSheetsConnected(false);
-    setLastSyncMessage('');
+  async function handleConnect() {
+    setMessage(null);
+    try {
+      await connect();
+      setMessage({ type: 'success', text: 'Connected to Google Sheets.' });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      setMessage({ type: 'error', text: `Connection failed: ${msg}` });
+    }
+  }
+
+  async function handlePull() {
+    if (!confirm('Pull data from Google Sheets? This will overwrite all your local data.')) return;
+    setMessage(null);
+    try {
+      await forcePull();
+      setEditProfile({ ...profile });
+      setMessage({ type: 'success', text: 'Data pulled from Google Sheets.' });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      setMessage({ type: 'error', text: `Pull failed: ${msg}` });
+    }
+  }
+
+  function handleDisconnect() {
+    if (!confirm('Disconnect Google Sheets? The spreadsheet will remain in your Google Drive but will no longer auto-sync.')) return;
+    disconnect();
     setMessage({ type: 'success', text: 'Disconnected from Google Sheets.' });
   }
 
-  const sheetUrl = getSpreadsheetUrl();
+  const isBusy = syncStatus.state === 'pushing' || syncStatus.state === 'pulling';
+  const statusLabel = syncStatus.isConnected
+    ? syncStatus.lastPushAt
+      ? `Connected \u2014 Last synced: ${syncStatus.lastPushAt.toLocaleTimeString()}`
+      : 'Connected'
+    : syncStatus.lastError
+      ? `Error: ${syncStatus.lastError}`
+      : 'Not connected';
 
   return (
     <div>
@@ -205,35 +213,52 @@ export default function SettingsPage() {
         {/* Google Sheets Sync */}
         <div className="bg-white border rounded-xl p-5 shadow-sm">
           <h3 className="text-sm font-semibold text-gray-700 mb-1">Google Sheets Backup</h3>
-          <p className="text-sm text-gray-500 mb-4">Push your data to a Google Sheet in your Drive for backup. Your data stays in your Google account.</p>
+          <p className="text-sm text-gray-500 mb-4">Auto-syncs your data to a Google Sheet in your Drive. Changes push automatically.</p>
 
           <div className="space-y-3">
+            <p className={`text-xs font-medium ${syncStatus.isConnected ? 'text-green-600' : syncStatus.lastError ? 'text-amber-600' : 'text-gray-500'}`}>
+              {statusLabel}
+            </p>
+
             <div className="flex items-center gap-3">
-              <button
-                onClick={handleSyncToSheets}
-                disabled={syncing}
-                className="bg-green-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {syncing ? 'Syncing...' : sheetsConnected ? 'Sync Now' : 'Connect & Sync'}
-              </button>
-              {sheetsConnected && (
+              {syncStatus.isConnected ? (
+                <>
+                  <button
+                    onClick={handleSyncNow}
+                    disabled={isBusy}
+                    className="bg-green-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {syncStatus.state === 'pushing' ? 'Pushing...' : 'Sync Now'}
+                  </button>
+                  <button
+                    onClick={handlePull}
+                    disabled={isBusy}
+                    className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {syncStatus.state === 'pulling' ? 'Pulling...' : 'Pull from Sheets'}
+                  </button>
+                  <button
+                    onClick={handleDisconnect}
+                    className="text-sm text-gray-500 hover:text-gray-700"
+                  >
+                    Disconnect
+                  </button>
+                </>
+              ) : (
                 <button
-                  onClick={handleDisconnectSheets}
-                  className="text-sm text-gray-500 hover:text-gray-700"
+                  onClick={handleConnect}
+                  disabled={isBusy}
+                  className="bg-green-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Disconnect
+                  {isBusy ? 'Connecting...' : 'Connect & Sync'}
                 </button>
               )}
             </div>
 
-            {lastSyncMessage && (
-              <p className="text-xs text-gray-500">{lastSyncMessage}</p>
-            )}
-
-            {sheetUrl && (
+            {spreadsheetUrl && (
               <p className="text-sm">
                 <a
-                  href={sheetUrl}
+                  href={spreadsheetUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-blue-600 hover:text-blue-800 underline"

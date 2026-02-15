@@ -34,6 +34,6 @@ declare namespace gapi {
         }): Promise<any>;
       }
     }
-    function request(params: { path: string; method: string; body?: any }): Promise<any>;
+    function request(params: { path: string; method: string; body?: any; params?: Record<string, string> }): Promise<any>;
   }
 }

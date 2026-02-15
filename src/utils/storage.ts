@@ -114,6 +114,21 @@ export function deleteInvoice(id: string): Invoice[] {
   return updated;
 }
 
+// Bulk write (used when pulling from Sheets)
+export function writeAll(data: {
+  companies: Company[];
+  projects: Project[];
+  timeEntries: TimeEntry[];
+  invoices: Invoice[];
+  profile: BusinessProfile;
+}): void {
+  write(KEYS.companies, data.companies);
+  write(KEYS.projects, data.projects);
+  write(KEYS.timeEntries, data.timeEntries);
+  write(KEYS.invoices, data.invoices);
+  localStorage.setItem(KEYS.profile, JSON.stringify(data.profile));
+}
+
 // Business Profile
 const emptyProfile: BusinessProfile = { name: '', address: '', email: '', phone: '', ein: '' };
 

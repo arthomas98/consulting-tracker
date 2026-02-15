@@ -1,4 +1,4 @@
-import type { Company, Project, TimeEntry, Invoice } from '../types';
+import type { Company, Currency, Project, TimeEntry, Invoice, InvoiceStatus } from '../types';
 import type { BusinessProfile } from '../utils/storage';
 
 // Map app data to Google Sheets rows (header + data rows)
@@ -61,4 +61,87 @@ export function profileToRows(profile: BusinessProfile): string[][] {
     ['Phone', profile.phone],
     ['EIN', profile.ein],
   ];
+}
+
+// Reverse mappers: Google Sheets rows → app data
+
+export function rowsToCompanies(rows: string[][]): Company[] {
+  if (rows.length <= 1) return []; // header only or empty
+  return rows.slice(1).map((r) => ({
+    id: r[0],
+    name: r[1],
+    currency: (r[2] as Currency) || 'USD',
+    hourlyRate: parseFloat(r[3]) || 0,
+    invoiceRequired: r[4] === 'Yes',
+    paymentTerms: r[5] || undefined,
+    paymentMethod: r[6] || undefined,
+    contactName: r[7] || undefined,
+    contactEmail: r[8] || undefined,
+    notes: r[9] || undefined,
+    isActive: r[10] !== 'No',
+    createdAt: r[11],
+    updatedAt: r[12],
+  }));
+}
+
+export function rowsToProjects(rows: string[][]): Project[] {
+  if (rows.length <= 1) return [];
+  return rows.slice(1).map((r) => ({
+    id: r[0],
+    companyId: r[1],
+    name: r[2],
+    isActive: r[3] !== 'No',
+    createdAt: r[4],
+    updatedAt: r[5],
+  }));
+}
+
+export function rowsToTimeEntries(rows: string[][]): TimeEntry[] {
+  if (rows.length <= 1) return [];
+  return rows.slice(1).map((r) => ({
+    id: r[0],
+    companyId: r[1],
+    projectId: r[2] || undefined,
+    date: r[3],
+    hours: parseFloat(r[4]) || 0,
+    fixedAmount: r[5] ? parseFloat(r[5]) : undefined,
+    description: r[6],
+    paidDate: r[7] || undefined,
+    createdAt: r[8],
+    updatedAt: r[9],
+  }));
+}
+
+export function rowsToInvoices(rows: string[][]): Invoice[] {
+  if (rows.length <= 1) return [];
+  return rows.slice(1).map((r) => ({
+    id: r[0],
+    companyId: r[1],
+    invoiceNumber: r[2] || undefined,
+    invoiceDate: r[3],
+    timeEntryIds: r[4] ? r[4].split(';') : [],
+    totalHours: parseFloat(r[5]) || 0,
+    totalAmount: parseFloat(r[6]) || 0,
+    currency: (r[7] as Currency) || 'USD',
+    rateUsed: parseFloat(r[8]) || 0,
+    status: (r[9] as InvoiceStatus) || 'draft',
+    paidDate: r[10] || undefined,
+    notes: r[11] || undefined,
+    createdAt: r[12],
+    updatedAt: r[13],
+  }));
+}
+
+export function rowsToProfile(rows: string[][]): BusinessProfile {
+  const map = new Map<string, string>();
+  for (const row of rows.slice(1)) {
+    if (row[0]) map.set(row[0], row[1] || '');
+  }
+  return {
+    name: map.get('Name') || '',
+    address: map.get('Address') || '',
+    email: map.get('Email') || '',
+    phone: map.get('Phone') || '',
+    ein: map.get('EIN') || '',
+  };
 }
