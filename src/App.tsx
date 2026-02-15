@@ -8,6 +8,7 @@ import InvoicesPage from './components/invoices/InvoicesPage';
 import CompaniesPage from './components/companies/CompaniesPage';
 import ReportsPage from './components/reports/ReportsPage';
 import SettingsPage from './components/settings/SettingsPage';
+import GettingStartedPage from './components/help/GettingStartedPage';
 
 export default function App() {
   return (
@@ -22,6 +23,7 @@ export default function App() {
               <Route path="/companies" element={<CompaniesPage />} />
               <Route path="/reports" element={<ReportsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/getting-started" element={<GettingStartedPage />} />
             </Route>
           </Routes>
         </BrowserRouter>

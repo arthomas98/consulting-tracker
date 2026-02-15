@@ -4,6 +4,7 @@ import { totalsByCurrency, entryAmount } from '../../utils/calculations';
 import { startOfMonth, endOfMonth, startOfYear, endOfYear, today, isInRange, getISOWeek, getWeekLabel, getMonthIndex, shortMonthName, formatDate } from '../../utils/dateUtils';
 import { formatCurrency, formatCurrencyShort, formatHours } from '../../utils/formatCurrency';
 import type { Currency } from '../../types';
+import { Link } from 'react-router-dom';
 import TimeEntryForm from '../time/TimeEntryForm';
 
 export default function DashboardPage() {
@@ -136,6 +137,9 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <h2 className="text-2xl font-bold">Dashboard</h2>
+      <p className="text-sm text-gray-500 -mt-4">
+        New here? Check out the <Link to="/getting-started" className="text-blue-600 hover:text-blue-800 font-medium">Getting Started</Link> guide.
+      </p>
 
       {/* Summary cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
