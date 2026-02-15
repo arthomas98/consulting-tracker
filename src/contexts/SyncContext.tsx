@@ -133,11 +133,17 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // --- Connect (OAuth + first sync) ---
+  // GAPI/GIS are eagerly initialized on mount. If init somehow hasn't
+  // finished, we init here too, but the calls return immediately if already done.
   const connect = useCallback(async () => {
     setSyncStatus((s) => ({ ...s, state: 'pushing', lastError: null }));
     try {
+      // These are no-ops if already initialized on mount
       await initGapi();
       await initGis();
+      // Safari requires the popup to open with minimal delay after user gesture.
+      // Because initGapi/initGis are already done (eager init), requestAccessToken
+      // fires synchronously from the click handler's microtask queue.
       await requestAccessToken();
       console.log('[Sync] Auth complete, token valid:', hasValidToken());
 
@@ -203,12 +209,9 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('ct:data-changed', handler);
   }, [triggerPush]);
 
-  // --- Startup: init GAPI/GIS and check for existing token ---
-  // Never request a token here — popups must be user-initiated
+  // --- Startup: eagerly init GAPI/GIS so they're ready when user clicks Connect ---
+  // This avoids async delays before the OAuth popup, which Safari blocks.
   useEffect(() => {
-    const ssId = getSpreadsheetId();
-    if (!ssId) return;
-
     let cancelled = false;
 
     (async () => {
@@ -216,13 +219,13 @@ export function SyncProvider({ children }: { children: ReactNode }) {
         await initGapi();
         await initGis();
 
-        // Only check for an existing in-memory token (no popup)
-        if (hasValidToken() && !cancelled) {
+        // If we have a spreadsheet ID and a valid in-memory token, mark connected
+        if (getSpreadsheetId() && hasValidToken() && !cancelled) {
           setSyncStatus((s) => ({ ...s, isConnected: true }));
           setSpreadsheetUrl(getSpreadsheetUrl());
         }
       } catch {
-        // GAPI/GIS load failed
+        // GAPI/GIS load failed — will retry when user clicks Connect
       }
     })();
 
