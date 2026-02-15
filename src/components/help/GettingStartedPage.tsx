@@ -78,6 +78,25 @@ export default function GettingStartedPage() {
           </ul>
         </div>
 
+        {/* Google Integration */}
+        <div className="bg-white border rounded-xl p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-gray-700 mb-1">6. Google Sheets Integration</h3>
+          <p className="text-sm text-gray-600">
+            The app can connect to your Google account to back up all data to a spreadsheet in your Google Drive. This is a one-way push — your local data syncs to the cloud, not the other way around.
+          </p>
+          <ul className="mt-2 text-sm text-gray-600 list-disc list-inside space-y-1">
+            <li>Go to <Link to="/settings" className="text-blue-600 hover:text-blue-800 font-medium">Settings</Link> and click <strong>Connect & Sync</strong></li>
+            <li>Sign in with Google and grant permission to create spreadsheets</li>
+            <li>A "Consulting Tracker Backup" spreadsheet is created in your Drive with 5 tabs: Companies, Projects, TimeEntries, Invoices, and Profile</li>
+            <li>Data auto-syncs whenever you make changes — you can also click <strong>Sync Now</strong> to push manually</li>
+            <li>Use <strong>Pull from Sheets</strong> to restore data from the spreadsheet (replaces all local data)</li>
+            <li>You can disconnect at any time — the spreadsheet stays in your Drive</li>
+          </ul>
+          <p className="text-sm text-gray-600 mt-2">
+            The app uses Google OAuth 2.0 (via Google Identity Services) and requests only the <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">spreadsheets</code> and <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">drive.file</code> scopes — it can only access spreadsheets it creates, not your other files.
+          </p>
+        </div>
+
         {/* Tips */}
         <div className="bg-white border rounded-xl p-5 shadow-sm">
           <h3 className="text-sm font-semibold text-gray-700 mb-1">Tips</h3>
@@ -86,6 +105,96 @@ export default function GettingStartedPage() {
             <li>The Dashboard revenue chart shows monthly or weekly earnings at a glance</li>
             <li>Duplicate time entries with the "Dup" button for recurring work</li>
           </ul>
+        </div>
+
+        {/* Architecture */}
+        <h2 className="text-xl font-bold pt-4">Architecture</h2>
+        <p className="text-sm text-gray-500 -mt-4">
+          How the app is built under the hood.
+        </p>
+
+        <div className="bg-white border rounded-xl p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-gray-700 mb-1">Local-First SPA</h3>
+          <p className="text-sm text-gray-600">
+            Consulting Tracker is a local-first single-page application. All data is stored in your browser's <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">localStorage</code> — there is no backend server. The app works offline and loads instantly because it never waits on a network request for core functionality.
+          </p>
+        </div>
+
+        <div className="bg-white border rounded-xl p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-gray-700 mb-1">Tech Stack</h3>
+          <ul className="text-sm text-gray-600 list-disc list-inside space-y-1">
+            <li><strong>React 18</strong> with TypeScript for type-safe UI components</li>
+            <li><strong>Vite</strong> for fast builds and hot module replacement</li>
+            <li><strong>Tailwind CSS v4</strong> for utility-first styling</li>
+            <li><strong>React Router v6</strong> for client-side navigation</li>
+            <li><strong>Vercel</strong> for static hosting with SPA routing</li>
+          </ul>
+        </div>
+
+        <div className="bg-white border rounded-xl p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-gray-700 mb-1">Data Flow</h3>
+          <p className="text-sm text-gray-600 mb-2">
+            Data follows an offline-first pattern:
+          </p>
+          <ol className="text-sm text-gray-600 list-decimal list-inside space-y-1">
+            <li>User action updates React state via the StorageContext</li>
+            <li>State change is immediately persisted to localStorage</li>
+            <li>If Google Sheets is connected, the sync manager pushes changes to the cloud (debounced)</li>
+          </ol>
+          <p className="text-sm text-gray-600 mt-2">
+            This means the app always feels fast — cloud sync happens in the background and never blocks the UI.
+          </p>
+        </div>
+
+        <div className="bg-white border rounded-xl p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-gray-700 mb-1">State Management</h3>
+          <p className="text-sm text-gray-600">
+            Global state is managed with React Context (no Redux or external state libraries). The <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">StorageContext</code> provides all CRUD operations and data to every component. A separate <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">SyncContext</code> handles Google Sheets connection state and sync operations.
+          </p>
+        </div>
+
+        <div className="bg-white border rounded-xl p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-gray-700 mb-1">Project Structure</h3>
+          <pre className="mt-2 text-xs text-gray-600 bg-gray-50 rounded-lg p-3 overflow-x-auto">{`src/
+  types/              TypeScript interfaces
+  utils/              Pure utility functions
+    storage.ts          localStorage CRUD layer
+    calculations.ts     Amount & totals logic
+    dateUtils.ts        Date helpers (ISO strings)
+    formatCurrency.ts   Number formatting
+    csv.ts              CSV export
+  services/
+    googleAuth.ts       OAuth2 token flow
+    sheetsDataMapper.ts Data-to-rows mapping
+    syncManager.ts      Cloud sync management
+  contexts/
+    StorageContext.tsx   Global state provider
+    SyncContext.tsx      Google Sheets sync state
+  components/
+    layout/             App shell & navigation
+    dashboard/          Summary cards, charts, quick entry
+    time/               Time entry list & forms
+    invoices/           Invoice CRUD & print
+    companies/          Company & project management
+    reports/            Work, invoicing & revenue reports
+    settings/           Profile, export/import, Sheets sync
+    help/               This getting started guide`}</pre>
+        </div>
+
+        <div className="bg-white border rounded-xl p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-gray-700 mb-1">Google Sheets as Cloud Database</h3>
+          <p className="text-sm text-gray-600">
+            Rather than a traditional backend database, the app uses Google Sheets as an optional cloud store. Benefits:
+          </p>
+          <ul className="mt-2 text-sm text-gray-600 list-disc list-inside space-y-1">
+            <li><strong>User-owned data</strong> — the spreadsheet lives in your Google Drive, not on a third-party server</li>
+            <li><strong>Free storage</strong> — no database costs</li>
+            <li><strong>Inspectable</strong> — you can open the spreadsheet and view/edit your data directly</li>
+            <li><strong>No backend needed</strong> — OAuth and API calls happen client-side</li>
+          </ul>
+          <p className="text-sm text-gray-600 mt-2">
+            A data mapper layer (<code className="text-xs bg-gray-100 px-1 py-0.5 rounded">sheetsDataMapper.ts</code>) translates between app models and spreadsheet rows. On each sync, all sheets are cleared and rewritten with current data.
+          </p>
         </div>
       </div>
     </div>
