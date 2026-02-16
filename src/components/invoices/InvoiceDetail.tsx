@@ -225,6 +225,8 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
 
   const [sendingRate, setSendingRate] = useState(false);
   const [rateWarning, setRateWarning] = useState('');
+  const [showPaidPicker, setShowPaidPicker] = useState(false);
+  const [paidDateInput, setPaidDateInput] = useState(today());
 
   async function updateStatus(status: Invoice['status'], paidDate?: string) {
     let exchangeRateToUSD = invoice.exchangeRateToUSD;
@@ -373,16 +375,49 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
         <p className="text-xs text-amber-600 bg-amber-50 px-3 py-2 rounded-md">{rateWarning}</p>
       )}
 
+      {invoice.status === 'sent' && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+          {showPaidPicker ? (
+            <div className="flex items-center gap-3">
+              <label className="text-sm font-medium text-green-800">Payment date:</label>
+              <input
+                type="date"
+                value={paidDateInput}
+                onChange={(e) => setPaidDateInput(e.target.value)}
+                className="border border-green-300 rounded-md px-3 py-1.5 text-sm"
+              />
+              <button
+                onClick={() => { updateStatus('paid', paidDateInput); setShowPaidPicker(false); }}
+                className="bg-green-600 text-white px-4 py-1.5 rounded-md text-sm font-medium hover:bg-green-700"
+              >
+                Confirm Paid
+              </button>
+              <button
+                onClick={() => setShowPaidPicker(false)}
+                className="text-sm text-gray-500 hover:text-gray-700"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-green-800">Received payment for this invoice?</span>
+              <button
+                onClick={() => { setPaidDateInput(today()); setShowPaidPicker(true); }}
+                className="bg-green-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-green-700"
+              >
+                Mark as Paid
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="flex items-center justify-between pt-2 border-t">
         <div className="flex gap-2">
           {invoice.status === 'draft' && (
             <button onClick={() => updateStatus('sent')} disabled={sendingRate} className="text-sm bg-yellow-100 text-yellow-800 px-3 py-1.5 rounded-md hover:bg-yellow-200 disabled:opacity-50">
               {sendingRate ? 'Fetching rate\u2026' : 'Mark Sent'}
-            </button>
-          )}
-          {invoice.status === 'sent' && (
-            <button onClick={() => updateStatus('paid', today())} className="text-sm bg-green-100 text-green-800 px-3 py-1.5 rounded-md hover:bg-green-200">
-              Mark Paid
             </button>
           )}
           {invoice.status !== 'draft' && (

@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useStorage } from '../../contexts/StorageContext';
 import type { Invoice } from '../../types';
-import { formatDate, daysSince } from '../../utils/dateUtils';
+import { formatDate, daysSince, today } from '../../utils/dateUtils';
 import { formatCurrency, formatHours } from '../../utils/formatCurrency';
 import Modal from '../shared/Modal';
 import Badge from '../shared/Badge';
@@ -11,7 +11,7 @@ import InvoiceDetail from './InvoiceDetail';
 const statusColor: Record<string, string> = { draft: 'gray', sent: 'yellow', paid: 'green' };
 
 export default function InvoicesPage() {
-  const { companies, invoices, deleteInvoice } = useStorage();
+  const { companies, invoices, deleteInvoice, saveInvoice } = useStorage();
   const [creating, setCreating] = useState(false);
   const [viewing, setViewing] = useState<Invoice | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('');
@@ -81,14 +81,24 @@ export default function InvoicesPage() {
                     <td className="px-4 py-3"><Badge color={statusColor[inv.status]}>{inv.status}</Badge></td>
                     <td className="px-4 py-3 text-right text-gray-500">{aging}</td>
                     <td className="px-4 py-3 text-right">
-                      {inv.status === 'draft' && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); if (confirm('Delete this draft invoice?')) deleteInvoice(inv.id); }}
-                          className="text-xs text-red-500 hover:text-red-700"
-                        >
-                          Delete
-                        </button>
-                      )}
+                      <div className="flex items-center justify-end gap-2">
+                        {inv.status === 'sent' && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); saveInvoice({ ...inv, status: 'paid', paidDate: today(), updatedAt: new Date().toISOString() }); }}
+                            className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded hover:bg-green-200 font-medium"
+                          >
+                            Mark Paid
+                          </button>
+                        )}
+                        {inv.status === 'draft' && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); if (confirm('Delete this draft invoice?')) deleteInvoice(inv.id); }}
+                            className="text-xs text-red-500 hover:text-red-700"
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
