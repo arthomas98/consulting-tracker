@@ -19,7 +19,7 @@ export default function GettingStartedPage() {
             Go to the <Link to="/companies" className="text-blue-600 hover:text-blue-800 font-medium">Companies</Link> page and add your clients. For each company you can set:
           </p>
           <ul className="mt-2 text-sm text-gray-600 list-disc list-inside space-y-1">
-            <li>Hourly rate and currency (USD or EUR)</li>
+            <li>Hourly rate and currency (USD, EUR, or GBP)</li>
             <li>Whether they require invoices or pay per-entry</li>
             <li>Payment terms, payment method, and contact info</li>
             <li>Projects within each company to categorize your work</li>

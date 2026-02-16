@@ -94,7 +94,7 @@ export default function DashboardPage() {
     return max || 1;
   }, [chartData]);
 
-  const barColors: Record<Currency, string> = { USD: 'bg-blue-500', EUR: 'bg-emerald-500' };
+  const barColors: Record<Currency, string> = { USD: 'bg-blue-500', EUR: 'bg-emerald-500', GBP: 'bg-purple-500' };
 
   // Action items
   const uninvoicedByCompany = useMemo(() => {

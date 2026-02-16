@@ -1,4 +1,4 @@
-export type Currency = 'USD' | 'EUR';
+export type Currency = 'USD' | 'EUR' | 'GBP';
 
 export interface Company {
   id: string;
