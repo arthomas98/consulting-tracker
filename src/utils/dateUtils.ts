@@ -79,6 +79,14 @@ export function getWeekLabel(dateStr: string): string {
   return monday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+export function getMondayDate(dateStr: string): string {
+  const d = new Date(dateStr + 'T00:00:00');
+  const day = d.getDay();
+  const monday = new Date(d);
+  monday.setDate(d.getDate() - ((day + 6) % 7));
+  return monday.toISOString().split('T')[0];
+}
+
 export function getMonthIndex(dateStr: string): number {
   return new Date(dateStr + 'T00:00:00').getMonth();
 }

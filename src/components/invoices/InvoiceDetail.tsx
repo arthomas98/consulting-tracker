@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
 import { useStorage } from '../../contexts/StorageContext';
-import type { Invoice } from '../../types';
+import type { Invoice, TimeEntry, Currency } from '../../types';
+import type { Project } from '../../types';
 import type { BusinessProfile } from '../../utils/storage';
-import { formatDate, today, getMonthLabel } from '../../utils/dateUtils';
+import { formatDate, today, getMonthLabel, getMondayDate } from '../../utils/dateUtils';
 import { formatCurrency, formatHours } from '../../utils/formatCurrency';
 import { getExchangeRate } from '../../utils/exchangeRate';
 import Badge from '../shared/Badge';
@@ -23,27 +24,128 @@ function esc(str: string): string {
     .replace(/'/g, '&#39;');
 }
 
+interface WeekLine {
+  mondayDate: string;
+  hours: number;
+  amount: number;
+}
+
+interface ProjectGroup {
+  projectName: string | null;
+  weeks: WeekLine[];
+  totalHours: number;
+  totalAmount: number;
+}
+
+function groupEntriesByProjectAndWeek(
+  entries: TimeEntry[],
+  projectMap: Map<string, Project>,
+  rate: number,
+): ProjectGroup[] {
+  // Group by projectId ('' for no project)
+  const byProject = new Map<string, TimeEntry[]>();
+  for (const e of entries) {
+    const key = e.projectId || '';
+    const arr = byProject.get(key) || [];
+    arr.push(e);
+    byProject.set(key, arr);
+  }
+
+  const groups: ProjectGroup[] = [];
+
+  // Named projects first (sorted), then no-project group
+  const projectIds = Array.from(byProject.keys()).sort((a, b) => {
+    if (a === '') return 1;
+    if (b === '') return -1;
+    const nameA = projectMap.get(a)?.name || '';
+    const nameB = projectMap.get(b)?.name || '';
+    return nameA.localeCompare(nameB);
+  });
+
+  for (const pid of projectIds) {
+    const projectEntries = byProject.get(pid)!;
+    const projectName = pid ? (projectMap.get(pid)?.name || 'Unknown Project') : null;
+
+    // Group by week (Monday date)
+    const byWeek = new Map<string, { hours: number; amount: number }>();
+    for (const e of projectEntries) {
+      const monday = getMondayDate(e.date);
+      const existing = byWeek.get(monday) || { hours: 0, amount: 0 };
+      existing.hours += e.hours;
+      existing.amount += e.fixedAmount != null ? e.fixedAmount : e.hours * rate;
+      byWeek.set(monday, existing);
+    }
+
+    const weeks = Array.from(byWeek.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([mondayDate, data]) => ({ mondayDate, ...data }));
+
+    const totalHours = weeks.reduce((s, w) => s + w.hours, 0);
+    const totalAmount = weeks.reduce((s, w) => s + w.amount, 0);
+
+    groups.push({ projectName, weeks, totalHours, totalAmount });
+  }
+
+  return groups;
+}
+
 function buildPrintHtml(
   invoice: Invoice,
   companyName: string,
-  entries: { date: string; project?: string; description: string; hours: number; amount: string }[],
-  totalHours: string,
-  totalAmount: string,
+  groups: ProjectGroup[],
+  totalHoursStr: string,
+  totalAmountStr: string,
   rate: string,
+  currency: Currency,
   profile: BusinessProfile,
+  isRetainer: boolean,
+  retainerLine?: { description: string; amount: string },
   notes?: string,
 ) {
-  const isRetainer = invoice.billingType === 'fixed_monthly';
   const rateLabel = isRetainer ? 'Monthly Retainer' : `${rate}/hr`;
 
-  const rows = entries.map((e) =>
-    `<tr>
-      <td style="padding:6px 8px;border-bottom:1px solid #eee;color:#555">${esc(e.date)}</td>
-      <td style="padding:6px 8px;border-bottom:1px solid #eee">${e.project ? `<span style="color:#999;margin-right:4px">[${esc(e.project)}]</span>` : ''}${esc(e.description)}</td>
-      <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right">${isRetainer ? '—' : (e.hours > 0 ? formatHours(e.hours) : '—')}</td>
-      <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right">${esc(e.amount)}</td>
-    </tr>`
-  ).join('');
+  let bodyHtml: string;
+  if (isRetainer && retainerLine) {
+    bodyHtml = `
+<table>
+  <thead><tr><th>Description</th><th style="text-align:right">Amount</th></tr></thead>
+  <tbody>
+    <tr>
+      <td style="padding:6px 8px;border-bottom:1px solid #eee">${esc(retainerLine.description)}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right">${esc(retainerLine.amount)}</td>
+    </tr>
+  </tbody>
+  <tfoot><tr>
+    <td style="font-weight:600;border-top:2px solid #ddd;padding:8px">Total</td>
+    <td style="font-weight:600;border-top:2px solid #ddd;padding:8px;text-align:right">${esc(totalAmountStr)}</td>
+  </tr></tfoot>
+</table>`;
+  } else {
+    const rows: string[] = [];
+    for (const group of groups) {
+      if (group.projectName) {
+        rows.push(`<tr><td colspan="3" style="padding:10px 8px 4px;font-weight:600;border-bottom:1px solid #eee">${esc(group.projectName)}</td></tr>`);
+      }
+      for (const week of group.weeks) {
+        const weekLabel = `Week of ${formatDate(week.mondayDate)}`;
+        rows.push(`<tr>
+          <td style="padding:6px 8px 6px ${group.projectName ? '24px' : '8px'};border-bottom:1px solid #eee;color:#555">${esc(weekLabel)}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right">${formatHours(week.hours)}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right">${formatCurrency(week.amount, currency)}</td>
+        </tr>`);
+      }
+    }
+    bodyHtml = `
+<table>
+  <thead><tr><th>Description</th><th style="text-align:right">Hours</th><th style="text-align:right">Amount</th></tr></thead>
+  <tbody>${rows.join('')}</tbody>
+  <tfoot><tr>
+    <td style="font-weight:600;border-top:2px solid #ddd;padding:8px">Total</td>
+    <td style="font-weight:600;border-top:2px solid #ddd;padding:8px;text-align:right">${esc(totalHoursStr)}</td>
+    <td style="font-weight:600;border-top:2px solid #ddd;padding:8px;text-align:right">${esc(totalAmountStr)}</td>
+  </tr></tfoot>
+</table>`;
+  }
 
   const hasProfile = profile.name || profile.address || profile.email || profile.phone || profile.ein;
 
@@ -53,8 +155,16 @@ function buildPrintHtml(
       ${profile.address ? `<div>${esc(profile.address).replace(/\n/g, '<br>')}</div>` : ''}
       ${profile.email ? `<div>${esc(profile.email)}</div>` : ''}
       ${profile.phone ? `<div>${esc(profile.phone)}</div>` : ''}
-      ${profile.ein ? `<div style="margin-top:4px">EIN: ${esc(profile.ein)}</div>` : ''}
     </div>` : '';
+
+  const bankFields: string[] = [];
+  if (profile.ein) bankFields.push(`<span>EIN: ${esc(profile.ein)}</span>`);
+  if (profile.routingNumber) bankFields.push(`<span>Routing #: ${esc(profile.routingNumber)}</span>`);
+  if (profile.swiftCode) bankFields.push(`<span>SWIFT: ${esc(profile.swiftCode)}</span>`);
+  if (profile.accountNumber) bankFields.push(`<span>Account #: ${esc(profile.accountNumber)}</span>`);
+  const bankHtml = bankFields.length > 0
+    ? `<div style="margin-top:20px;padding-top:16px;border-top:1px solid #ddd;font-size:13px;color:#555"><strong>Payment Information</strong><div style="margin-top:6px;display:flex;gap:20px;flex-wrap:wrap">${bankFields.join('')}</div></div>`
+    : '';
 
   return `<!DOCTYPE html>
 <html><head>
@@ -67,12 +177,8 @@ function buildPrintHtml(
   .parties { display: flex; justify-content: space-between; margin-bottom: 24px; }
   .party { font-size: 14px; }
   .party .label { color: #888; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
-  .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 24px; font-size: 14px; margin-bottom: 20px; }
-  .meta .label { color: #888; }
   table { width: 100%; border-collapse: collapse; font-size: 14px; margin: 20px 0; }
   th { text-align: left; padding: 8px; border-bottom: 2px solid #ddd; font-weight: 600; }
-  th:nth-child(3), th:nth-child(4) { text-align: right; }
-  tfoot td { font-weight: 600; border-top: 2px solid #ddd; padding: 8px; }
   .notes { font-size: 13px; color: #666; margin-top: 16px; }
   @media print { body { padding: 0; } }
 </style>
@@ -88,21 +194,14 @@ function buildPrintHtml(
   </div>
   <div class="party" style="text-align:right">
     <div class="label">Invoice Details</div>
-    <div><span style="color:#888">Invoice #:</span> ${esc(invoice.invoiceNumber || '—')}</div>
+    <div><span style="color:#888">Invoice #:</span> ${esc(invoice.invoiceNumber || '\u2014')}</div>
     <div><span style="color:#888">Date:</span> ${formatDate(invoice.invoiceDate)}</div>
     <div><span style="color:#888">Rate:</span> ${rateLabel}</div>
   </div>
 </div>
-<table>
-  <thead><tr><th>Date</th><th>Description</th><th>Hours</th><th>Amount</th></tr></thead>
-  <tbody>${rows}</tbody>
-  <tfoot><tr>
-    <td colspan="2">Total</td>
-    <td style="text-align:right">${isRetainer ? '—' : totalHours}</td>
-    <td style="text-align:right">${totalAmount}</td>
-  </tr></tfoot>
-</table>
+${bodyHtml}
 ${notes ? `<div class="notes"><strong>Notes:</strong> ${esc(notes)}</div>` : ''}
+${bankHtml}
 <script>window.onload=function(){window.print()}</script>
 </body></html>`;
 }
@@ -117,6 +216,11 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
   const entries = useMemo(
     () => timeEntries.filter((e) => invoice.timeEntryIds.includes(e.id)).sort((a, b) => a.date.localeCompare(b.date)),
     [timeEntries, invoice.timeEntryIds]
+  );
+
+  const grouped = useMemo(
+    () => isRetainer ? [] : groupEntriesByProjectAndWeek(entries, projectMap, invoice.rateUsed),
+    [entries, projectMap, invoice.rateUsed, isRetainer]
   );
 
   const [sendingRate, setSendingRate] = useState(false);
@@ -145,34 +249,23 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
   }
 
   function handlePrint() {
-    let printEntries: { date: string; project?: string; description: string; hours: number; amount: string }[];
-
-    if (isRetainer && entries.length === 0) {
-      const monthLabel = invoice.retainerMonth ? getMonthLabel(invoice.retainerMonth + '-01') : '';
-      printEntries = [{
-        date: formatDate(invoice.invoiceDate),
-        description: `Monthly advisory retainer — ${monthLabel}`,
-        hours: 0,
-        amount: formatCurrency(invoice.totalAmount, invoice.currency),
-      }];
-    } else {
-      printEntries = entries.map((e) => ({
-        date: formatDate(e.date),
-        project: e.projectId ? projectMap.get(e.projectId)?.name : undefined,
-        description: e.description,
-        hours: e.hours,
-        amount: formatCurrency(e.fixedAmount != null ? e.fixedAmount : e.hours * invoice.rateUsed, invoice.currency),
-      }));
-    }
+    const monthLabel = invoice.retainerMonth ? getMonthLabel(invoice.retainerMonth + '-01') : '';
+    const retainerLine = isRetainer ? {
+      description: `Monthly advisory retainer \u2014 ${monthLabel}`,
+      amount: formatCurrency(invoice.totalAmount, invoice.currency),
+    } : undefined;
 
     const html = buildPrintHtml(
       invoice,
       company?.name || 'Unknown',
-      printEntries,
+      grouped,
       formatHours(invoice.totalHours),
       formatCurrency(invoice.totalAmount, invoice.currency),
       formatCurrency(invoice.rateUsed, invoice.currency),
+      invoice.currency,
       profile,
+      isRetainer,
+      retainerLine,
       invoice.notes,
     );
 
@@ -209,44 +302,71 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
       )}
 
       <div className="border rounded-md overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="text-left px-3 py-2 font-medium">Date</th>
-              <th className="text-left px-3 py-2 font-medium">Description</th>
-              {!isRetainer && <th className="text-right px-3 py-2 font-medium">Hours</th>}
-              <th className="text-right px-3 py-2 font-medium">Amount</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {isRetainer && entries.length === 0 ? (
+        {isRetainer ? (
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50">
               <tr>
-                <td className="px-3 py-2 text-gray-500">{formatDate(invoice.invoiceDate)}</td>
-                <td className="px-3 py-2">Monthly advisory retainer — {monthLabel}</td>
+                <th className="text-left px-3 py-2 font-medium">Description</th>
+                <th className="text-right px-3 py-2 font-medium">Amount</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              <tr>
+                <td className="px-3 py-2">Monthly advisory retainer &mdash; {monthLabel}</td>
                 <td className="px-3 py-2 text-right">{formatCurrency(invoice.totalAmount, invoice.currency)}</td>
               </tr>
-            ) : (
-              entries.map((e) => (
-                <tr key={e.id}>
-                  <td className="px-3 py-2 text-gray-500">{formatDate(e.date)}</td>
-                  <td className="px-3 py-2">
-                    {e.projectId && <span className="text-xs text-gray-400 mr-1">[{projectMap.get(e.projectId)?.name}]</span>}
-                    {e.description}
+            </tbody>
+            <tfoot className="bg-gray-50 font-semibold">
+              <tr>
+                <td className="px-3 py-2">Total</td>
+                <td className="px-3 py-2 text-right">{formatCurrency(invoice.totalAmount, invoice.currency)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="text-left px-3 py-2 font-medium">Description</th>
+                <th className="text-right px-3 py-2 font-medium">Hours</th>
+                <th className="text-right px-3 py-2 font-medium">Amount</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {grouped.map((group, gi) => (
+                <tr key={gi} className="border-0">
+                  <td colSpan={3} className="p-0">
+                    {group.projectName && (
+                      <div className="px-3 pt-3 pb-1 font-semibold text-gray-800 bg-gray-50 border-b">
+                        {group.projectName}
+                      </div>
+                    )}
+                    <table className="w-full">
+                      <tbody>
+                        {group.weeks.map((week) => (
+                          <tr key={week.mondayDate} className="border-b border-gray-100">
+                            <td className={`py-2 text-gray-600 ${group.projectName ? 'pl-6 pr-3' : 'px-3'}`}>
+                              Week of {formatDate(week.mondayDate)}
+                            </td>
+                            <td className="py-2 px-3 text-right tabular-nums w-20">{formatHours(week.hours)}</td>
+                            <td className="py-2 px-3 text-right tabular-nums w-28">{formatCurrency(week.amount, invoice.currency)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </td>
-                  {!isRetainer && <td className="px-3 py-2 text-right">{e.hours > 0 ? formatHours(e.hours) : '—'}</td>}
-                  <td className="px-3 py-2 text-right">{formatCurrency(e.fixedAmount != null ? e.fixedAmount : e.hours * invoice.rateUsed, invoice.currency)}</td>
                 </tr>
-              ))
-            )}
-          </tbody>
-          <tfoot className="bg-gray-50 font-semibold">
-            <tr>
-              <td className="px-3 py-2" colSpan={isRetainer ? 1 : 2}>Total</td>
-              {!isRetainer && <td className="px-3 py-2 text-right">{formatHours(invoice.totalHours)}</td>}
-              <td className="px-3 py-2 text-right">{formatCurrency(invoice.totalAmount, invoice.currency)}</td>
-            </tr>
-          </tfoot>
-        </table>
+              ))}
+            </tbody>
+            <tfoot className="bg-gray-50 font-semibold">
+              <tr>
+                <td className="px-3 py-2">Total</td>
+                <td className="px-3 py-2 text-right">{formatHours(invoice.totalHours)}</td>
+                <td className="px-3 py-2 text-right">{formatCurrency(invoice.totalAmount, invoice.currency)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        )}
       </div>
 
       {rateWarning && (

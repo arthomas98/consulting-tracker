@@ -4,7 +4,7 @@ import type { BusinessProfile } from '../utils/storage';
 // Map app data to Google Sheets rows (header + data rows)
 
 export function companiesToRows(companies: Company[]): string[][] {
-  const header = ['ID', 'Name', 'Currency', 'Hourly Rate', 'Invoice Required', 'Payment Terms', 'Payment Method', 'Contact Name', 'Contact Email', 'Notes', 'Active', 'Created', 'Updated', 'Billing Type', 'Monthly Rate'];
+  const header = ['ID', 'Name', 'Currency', 'Hourly Rate', 'Invoice Required', 'Payment Terms', 'Payment Method', 'Contact Name', 'Contact Email', 'Notes', 'Active', 'Created', 'Updated', 'Billing Type', 'Monthly Rate', 'Next Invoice Number'];
   const rows = companies.map((c) => [
     c.id, c.name, c.currency, String(c.hourlyRate),
     c.invoiceRequired ? 'Yes' : 'No',
@@ -14,6 +14,7 @@ export function companiesToRows(companies: Company[]): string[][] {
     c.createdAt, c.updatedAt,
     c.billingType || 'hourly',
     c.monthlyRate != null ? String(c.monthlyRate) : '',
+    c.nextInvoiceNumber != null ? String(c.nextInvoiceNumber) : '',
   ]);
   return [header, ...rows];
 }
@@ -65,6 +66,9 @@ export function profileToRows(profile: BusinessProfile): string[][] {
     ['Email', profile.email],
     ['Phone', profile.phone],
     ['EIN', profile.ein],
+    ['Routing Number', profile.routingNumber || ''],
+    ['SWIFT Code', profile.swiftCode || ''],
+    ['Account Number', profile.accountNumber || ''],
   ];
 }
 
@@ -74,6 +78,7 @@ export function rowsToCompanies(rows: string[][]): Company[] {
   if (rows.length <= 1) return []; // header only or empty
   const header = rows[0];
   const hasBillingType = header.includes('Billing Type');
+  const hasNextInvoice = header.includes('Next Invoice Number');
   return rows.slice(1).map((r) => ({
     id: r[0],
     name: r[1],
@@ -81,6 +86,7 @@ export function rowsToCompanies(rows: string[][]): Company[] {
     billingType: (hasBillingType && r[13] ? r[13] as BillingType : 'hourly'),
     hourlyRate: parseFloat(r[3]) || 0,
     monthlyRate: hasBillingType && r[14] ? parseFloat(r[14]) : undefined,
+    nextInvoiceNumber: hasNextInvoice && r[15] ? parseInt(r[15], 10) : undefined,
     invoiceRequired: r[4] === 'Yes',
     paymentTerms: r[5] || undefined,
     paymentMethod: r[6] || undefined,
@@ -158,5 +164,8 @@ export function rowsToProfile(rows: string[][]): BusinessProfile {
     email: map.get('Email') || '',
     phone: map.get('Phone') || '',
     ein: map.get('EIN') || '',
+    routingNumber: map.get('Routing Number') || undefined,
+    swiftCode: map.get('SWIFT Code') || undefined,
+    accountNumber: map.get('Account Number') || undefined,
   };
 }

@@ -6,6 +6,9 @@ export interface BusinessProfile {
   email: string;
   phone: string;
   ein: string;
+  routingNumber?: string;
+  swiftCode?: string;
+  accountNumber?: string;
 }
 
 const KEYS = {

@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useStorage } from '../../contexts/StorageContext';
 import type { Invoice } from '../../types';
-import { totalHours, totalAmount, generateInvoiceNumber, isFixedMonthly } from '../../utils/calculations';
+import { totalHours, totalAmount, isFixedMonthly } from '../../utils/calculations';
 import { formatDate, today, getMonthLabel } from '../../utils/dateUtils';
 import { formatCurrency, formatHours } from '../../utils/formatCurrency';
 
@@ -10,7 +10,7 @@ interface Props {
 }
 
 export default function CreateInvoice({ onDone }: Props) {
-  const { companies, projects, timeEntries, invoices, saveInvoice } = useStorage();
+  const { companies, projects, timeEntries, invoices, saveInvoice, saveCompany } = useStorage();
   const projectMap = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects]);
   const activeCompanies = companies.filter((c) => c.isActive && c.invoiceRequired);
 
@@ -59,21 +59,30 @@ export default function CreateInvoice({ onDone }: Props) {
 
   function handleCreate() {
     if (!company) return;
+
+    // Validate before allocating invoice number
+    if (isRetainer && (retainerMonthExists || !company.monthlyRate)) return;
+    if (!isRetainer && selected.size === 0) return;
+
     const now = new Date().toISOString();
-    const year = new Date().getFullYear();
+
+    // Per-company invoice numbering
+    const nextNum = company.nextInvoiceNumber || 1;
+    const invoiceNumber = String(nextNum).padStart(3, '0');
+    // Increment company's next invoice number
+    saveCompany({ ...company, nextInvoiceNumber: nextNum + 1, updatedAt: now });
 
     if (isRetainer) {
-      if (retainerMonthExists || !company.monthlyRate) return;
       const invoice: Invoice = {
         id: crypto.randomUUID(),
         companyId,
-        invoiceNumber: generateInvoiceNumber(invoices, year),
+        invoiceNumber,
         invoiceDate: today(),
         timeEntryIds: [],
         totalHours: 0,
-        totalAmount: company.monthlyRate,
+        totalAmount: company.monthlyRate!,
         currency: company.currency,
-        rateUsed: company.monthlyRate,
+        rateUsed: company.monthlyRate!,
         status: 'draft',
         billingType: 'fixed_monthly',
         retainerMonth,
@@ -89,7 +98,7 @@ export default function CreateInvoice({ onDone }: Props) {
       const invoice: Invoice = {
         id: crypto.randomUUID(),
         companyId,
-        invoiceNumber: generateInvoiceNumber(invoices, year),
+        invoiceNumber,
         invoiceDate: today(),
         timeEntryIds: entries.map((e) => e.id),
         totalHours: hours,

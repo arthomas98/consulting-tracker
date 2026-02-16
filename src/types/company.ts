@@ -14,6 +14,7 @@ export interface Company {
   contactName?: string;
   contactEmail?: string;
   notes?: string;
+  nextInvoiceNumber?: number;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;

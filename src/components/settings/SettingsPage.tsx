@@ -198,6 +198,43 @@ export default function SettingsPage() {
                 className="w-full border rounded-md px-3 py-2 text-sm"
               />
             </div>
+            <div className="border-t pt-3 mt-1">
+              <p className="text-sm font-medium text-gray-700 mb-3">Banking Information</p>
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Routing #</label>
+                    <input
+                      type="text"
+                      value={editProfile.routingNumber || ''}
+                      onChange={(e) => setEditProfile({ ...editProfile, routingNumber: e.target.value })}
+                      placeholder="XXXXXXXXX"
+                      className="w-full border rounded-md px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Account #</label>
+                    <input
+                      type="text"
+                      value={editProfile.accountNumber || ''}
+                      onChange={(e) => setEditProfile({ ...editProfile, accountNumber: e.target.value })}
+                      placeholder="XXXXXXXXXXXX"
+                      className="w-full border rounded-md px-3 py-2 text-sm"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">SWIFT Code</label>
+                  <input
+                    type="text"
+                    value={editProfile.swiftCode || ''}
+                    onChange={(e) => setEditProfile({ ...editProfile, swiftCode: e.target.value })}
+                    placeholder="XXXXXXXX"
+                    className="w-full border rounded-md px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+            </div>
             <div className="flex items-center gap-3">
               <button
                 onClick={handleSaveProfile}
