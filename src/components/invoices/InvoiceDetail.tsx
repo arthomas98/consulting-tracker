@@ -1,9 +1,10 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useStorage } from '../../contexts/StorageContext';
 import type { Invoice } from '../../types';
 import type { BusinessProfile } from '../../utils/storage';
 import { formatDate, today, getMonthLabel } from '../../utils/dateUtils';
 import { formatCurrency, formatHours } from '../../utils/formatCurrency';
+import { getExchangeRate } from '../../utils/exchangeRate';
 import Badge from '../shared/Badge';
 
 interface Props {
@@ -118,8 +119,29 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
     [timeEntries, invoice.timeEntryIds]
   );
 
-  function updateStatus(status: Invoice['status'], paidDate?: string) {
-    saveInvoice({ ...invoice, status, paidDate, updatedAt: new Date().toISOString() });
+  const [sendingRate, setSendingRate] = useState(false);
+  const [rateWarning, setRateWarning] = useState('');
+
+  async function updateStatus(status: Invoice['status'], paidDate?: string) {
+    let exchangeRateToUSD = invoice.exchangeRateToUSD;
+
+    if (status === 'sent' && exchangeRateToUSD == null) {
+      if (invoice.currency === 'USD') {
+        exchangeRateToUSD = 1.0;
+      } else {
+        setSendingRate(true);
+        setRateWarning('');
+        const rate = await getExchangeRate(invoice.currency);
+        setSendingRate(false);
+        if (rate != null) {
+          exchangeRateToUSD = rate;
+        } else {
+          setRateWarning(`Could not fetch ${invoice.currency}/USD rate. Invoice marked as sent without exchange rate.`);
+        }
+      }
+    }
+
+    saveInvoice({ ...invoice, status, paidDate, exchangeRateToUSD, updatedAt: new Date().toISOString() });
   }
 
   function handlePrint() {
@@ -227,11 +249,15 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
         </table>
       </div>
 
+      {rateWarning && (
+        <p className="text-xs text-amber-600 bg-amber-50 px-3 py-2 rounded-md">{rateWarning}</p>
+      )}
+
       <div className="flex items-center justify-between pt-2 border-t">
         <div className="flex gap-2">
           {invoice.status === 'draft' && (
-            <button onClick={() => updateStatus('sent')} className="text-sm bg-yellow-100 text-yellow-800 px-3 py-1.5 rounded-md hover:bg-yellow-200">
-              Mark Sent
+            <button onClick={() => updateStatus('sent')} disabled={sendingRate} className="text-sm bg-yellow-100 text-yellow-800 px-3 py-1.5 rounded-md hover:bg-yellow-200 disabled:opacity-50">
+              {sendingRate ? 'Fetching rate\u2026' : 'Mark Sent'}
             </button>
           )}
           {invoice.status === 'sent' && (

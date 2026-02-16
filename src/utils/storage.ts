@@ -101,6 +101,7 @@ export function getInvoices(): Invoice[] {
   return read<Invoice>(KEYS.invoices).map((i) => ({
     ...i,
     billingType: i.billingType || 'hourly',
+    exchangeRateToUSD: i.exchangeRateToUSD ?? (i.currency === 'USD' ? 1.0 : undefined),
   }));
 }
 

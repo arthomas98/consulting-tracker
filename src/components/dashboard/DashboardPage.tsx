@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useStorage } from '../../contexts/StorageContext';
 import { totalsByCurrency, entryAmount, isFixedMonthly } from '../../utils/calculations';
 import { startOfMonth, endOfMonth, startOfYear, endOfYear, today, isInRange, getISOWeek, getWeekLabel, getMonthIndex, shortMonthName, formatDate, getMonthLabel } from '../../utils/dateUtils';
 import { formatCurrency, formatCurrencyShort, formatHours } from '../../utils/formatCurrency';
+import { preloadRates, convertToUSD } from '../../utils/exchangeRate';
 import type { Currency } from '../../types';
 import { Link } from 'react-router-dom';
 import TimeEntryForm from '../time/TimeEntryForm';
@@ -12,6 +13,17 @@ export default function DashboardPage() {
   const [quickEntryKey, setQuickEntryKey] = useState(0);
   const [chartOpen, setChartOpen] = useState(false);
   const [chartMode, setChartMode] = useState<'week' | 'month'>('month');
+  const [rates, setRates] = useState<Record<Currency, number | null>>({ USD: 1, EUR: null, GBP: null });
+  const [ratesLoaded, setRatesLoaded] = useState(false);
+
+  useEffect(() => {
+    preloadRates().then((r) => {
+      setRates(r);
+      setRatesLoaded(true);
+    });
+  }, []);
+
+  const allRatesAvailable = rates.EUR != null && rates.GBP != null;
 
   const now = new Date();
   const year = now.getFullYear();
@@ -89,7 +101,30 @@ export default function DashboardPage() {
   const monthHours = monthTotals.reduce((s, t) => s + t.hours, 0);
   const yearHours = yearTotals.reduce((s, t) => s + t.hours, 0);
 
-  // Chart data
+  // Converted USD totals
+  const convertedMonthTotal = useMemo(() => {
+    let total = 0;
+    let hasNull = false;
+    for (const t of monthTotals) {
+      const usd = convertToUSD(t.amount, t.currency, rates[t.currency]);
+      if (usd == null) { hasNull = true; continue; }
+      total += usd;
+    }
+    return hasNull ? null : total;
+  }, [monthTotals, rates]);
+
+  const convertedYearTotal = useMemo(() => {
+    let total = 0;
+    let hasNull = false;
+    for (const t of yearTotals) {
+      const usd = convertToUSD(t.amount, t.currency, rates[t.currency]);
+      if (usd == null) { hasNull = true; continue; }
+      total += usd;
+    }
+    return hasNull ? null : total;
+  }, [yearTotals, rates]);
+
+  // Chart data — convert to USD when rates available
   const chartData = useMemo(() => {
     if (!chartOpen) return [];
 
@@ -137,7 +172,20 @@ export default function DashboardPage() {
     }
   }, [chartOpen, chartMode, yearEntriesHourly, yearRetainerInvoices, companyMap]);
 
-  // Determine all currencies present and max value for scaling
+  // Convert chart buckets to USD when all rates available
+  const chartDataUSD = useMemo(() => {
+    if (!allRatesAvailable) return null;
+    return chartData.map((bucket) => {
+      let usdTotal = 0;
+      bucket.amounts.forEach((val, cur) => {
+        const converted = convertToUSD(val, cur, rates[cur]);
+        if (converted != null) usdTotal += converted;
+      });
+      return { label: bucket.label, usdTotal };
+    });
+  }, [chartData, rates, allRatesAvailable]);
+
+  // Determine all currencies present and max value for scaling (fallback multi-currency)
   const allCurrencies = useMemo(() => {
     const set = new Set<Currency>();
     for (const b of chartData) b.amounts.forEach((_, c) => set.add(c));
@@ -145,6 +193,13 @@ export default function DashboardPage() {
   }, [chartData]);
 
   const maxVal = useMemo(() => {
+    if (chartDataUSD) {
+      let max = 0;
+      for (const b of chartDataUSD) {
+        if (b.usdTotal > max) max = b.usdTotal;
+      }
+      return max || 1;
+    }
     let max = 0;
     for (const b of chartData) {
       let total = 0;
@@ -152,7 +207,7 @@ export default function DashboardPage() {
       if (total > max) max = total;
     }
     return max || 1;
-  }, [chartData]);
+  }, [chartData, chartDataUSD]);
 
   const barColors: Record<Currency, string> = { USD: 'bg-blue-500', EUR: 'bg-emerald-500', GBP: 'bg-purple-500' };
 
@@ -215,16 +270,30 @@ export default function DashboardPage() {
       </p>
 
       {/* Summary cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {/* This Month */}
         <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-xl p-5 text-white shadow-lg shadow-indigo-200">
           <p className="text-xs font-medium text-indigo-200 uppercase tracking-wide mb-2">This Month</p>
           <p className="text-2xl font-bold">{formatHours(monthHours)}<span className="text-sm font-normal text-indigo-200 ml-1">hours</span></p>
           <div className="mt-2 space-y-0.5">
-            {monthTotals.map((t) => (
-              <p key={t.currency} className="text-sm text-indigo-100">{formatCurrency(t.amount, t.currency)}</p>
-            ))}
-            {monthTotals.length === 0 && <p className="text-sm text-indigo-200">No revenue</p>}
+            {convertedMonthTotal != null ? (
+              <>
+                <p className="text-sm text-indigo-100 font-semibold">{formatCurrency(convertedMonthTotal, 'USD')}</p>
+                {monthTotals.filter((t) => t.currency !== 'USD').map((t) => (
+                  <p key={t.currency} className="text-xs text-indigo-200">{formatCurrency(t.amount, t.currency)}</p>
+                ))}
+              </>
+            ) : (
+              <>
+                {monthTotals.map((t) => (
+                  <p key={t.currency} className="text-sm text-indigo-100">
+                    {formatCurrency(t.amount, t.currency)}
+                    {rates[t.currency] == null && <span className="text-xs text-indigo-300 ml-1">(rate unavailable)</span>}
+                  </p>
+                ))}
+                {monthTotals.length === 0 && <p className="text-sm text-indigo-200">No revenue</p>}
+              </>
+            )}
           </div>
         </div>
 
@@ -233,21 +302,49 @@ export default function DashboardPage() {
           <p className="text-xs font-medium text-blue-200 uppercase tracking-wide mb-2">{year} Year-to-Date</p>
           <p className="text-2xl font-bold">{formatHours(yearHours)}<span className="text-sm font-normal text-blue-200 ml-1">hours</span></p>
           <div className="mt-2 space-y-0.5">
-            {yearTotals.map((t) => (
-              <p key={t.currency} className="text-sm text-blue-100">{formatCurrency(t.amount, t.currency)}</p>
-            ))}
-            {yearTotals.length === 0 && <p className="text-sm text-blue-200">No revenue</p>}
+            {convertedYearTotal != null ? (
+              <>
+                <p className="text-sm text-blue-100 font-semibold">{formatCurrency(convertedYearTotal, 'USD')}</p>
+                {yearTotals.filter((t) => t.currency !== 'USD').map((t) => (
+                  <p key={t.currency} className="text-xs text-blue-200">{formatCurrency(t.amount, t.currency)}</p>
+                ))}
+              </>
+            ) : (
+              <>
+                {yearTotals.map((t) => (
+                  <p key={t.currency} className="text-sm text-blue-100">
+                    {formatCurrency(t.amount, t.currency)}
+                    {rates[t.currency] == null && <span className="text-xs text-blue-300 ml-1">(rate unavailable)</span>}
+                  </p>
+                ))}
+                {yearTotals.length === 0 && <p className="text-sm text-blue-200">No revenue</p>}
+              </>
+            )}
           </div>
         </div>
 
-        {/* Per-currency YTD cards */}
-        {yearTotals.map((t, idx) => (
-          <div key={t.currency} className={`bg-gradient-to-br ${idx === 0 ? 'from-emerald-500 to-emerald-600 shadow-emerald-200' : 'from-amber-500 to-amber-600 shadow-amber-200'} rounded-xl p-5 text-white shadow-lg`}>
-            <p className={`text-xs font-medium ${idx === 0 ? 'text-emerald-200' : 'text-amber-200'} uppercase tracking-wide mb-2`}>{t.currency} Total</p>
-            <p className="text-2xl font-bold">{formatCurrency(t.amount, t.currency)}</p>
-            <p className={`text-sm ${idx === 0 ? 'text-emerald-100' : 'text-amber-100'} mt-1`}>{formatHours(t.hours)} hours</p>
-          </div>
-        ))}
+        {/* Total Revenue (USD) card */}
+        <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl p-5 text-white shadow-lg shadow-emerald-200">
+          <p className="text-xs font-medium text-emerald-200 uppercase tracking-wide mb-2">Total Revenue (USD)</p>
+          {convertedYearTotal != null ? (
+            <>
+              <p className="text-2xl font-bold">{formatCurrency(convertedYearTotal, 'USD')}</p>
+              <p className="text-sm text-emerald-100 mt-1">{formatHours(yearHours)} hours</p>
+            </>
+          ) : ratesLoaded ? (
+            <>
+              {yearTotals.map((t) => (
+                <p key={t.currency} className="text-lg font-bold">
+                  {formatCurrency(t.amount, t.currency)}
+                  {rates[t.currency] == null && <span className="text-xs font-normal text-emerald-200 ml-1">(rate unavailable)</span>}
+                </p>
+              ))}
+              <p className="text-sm text-emerald-100 mt-1">{formatHours(yearHours)} hours</p>
+            </>
+          ) : (
+            <p className="text-sm text-emerald-200">Loading rates...</p>
+          )}
+        </div>
       </div>
 
       {/* Chart toggle */}
@@ -256,7 +353,7 @@ export default function DashboardPage() {
           onClick={() => setChartOpen((o) => !o)}
           className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50"
         >
-          <span>Revenue Chart ({year})</span>
+          <span>Revenue Chart ({year}){chartDataUSD ? ' — USD' : ''}</span>
           <span className="text-gray-400">{chartOpen ? '\u25B2' : '\u25BC'}</span>
         </button>
 
@@ -278,7 +375,7 @@ export default function DashboardPage() {
                   Weekly
                 </button>
               </div>
-              {allCurrencies.length > 1 && (
+              {!chartDataUSD && allCurrencies.length > 1 && (
                 <div className="flex items-center gap-3 ml-4 text-xs">
                   {allCurrencies.map((c) => (
                     <span key={c} className="flex items-center gap-1">
@@ -293,7 +390,39 @@ export default function DashboardPage() {
             {/* Bar chart */}
             {chartData.length === 0 ? (
               <p className="text-sm text-gray-400 text-center py-8">No data for {year}</p>
+            ) : chartDataUSD ? (
+              /* USD-converted single-color chart */
+              <div>
+                <div className="flex items-end gap-1" style={{ height: '220px' }}>
+                  {chartDataUSD.map((bucket, i) => {
+                    const barHeight = Math.round((bucket.usdTotal / maxVal) * 184);
+                    return (
+                      <div key={i} className="flex-1 flex flex-col items-end justify-end group relative min-w-0" style={{ height: '220px' }}>
+                        {/* Tooltip */}
+                        <div className="absolute bottom-full mb-1 hidden group-hover:block bg-gray-800 text-white text-xs rounded px-2 py-1 whitespace-nowrap z-10 left-1/2 -translate-x-1/2">
+                          <p className="font-medium">{bucket.label}</p>
+                          <p>{formatCurrency(bucket.usdTotal, 'USD')}</p>
+                        </div>
+                        {/* Dollar label above bar */}
+                        {bucket.usdTotal > 0 && (
+                          <p className="text-[10px] font-medium text-gray-500 mb-0.5 truncate w-full text-center">
+                            {formatCurrencyShort(bucket.usdTotal, 'USD')}
+                          </p>
+                        )}
+                        {/* Single bar */}
+                        <div
+                          className="w-full bg-blue-500 rounded-t"
+                          style={{ height: `${Math.max(barHeight, bucket.usdTotal > 0 ? 4 : 0)}px` }}
+                        />
+                        {/* Label */}
+                        <p className="text-[10px] text-gray-400 mt-1 truncate w-full text-center">{bucket.label}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             ) : (
+              /* Fallback: multi-currency stacked chart */
               <div>
                 <div className="flex items-end gap-1" style={{ height: '220px' }}>
                   {chartData.map((bucket, i) => {
@@ -390,10 +519,18 @@ export default function DashboardPage() {
             <div className="space-y-2">
               {awaitingPayment.map((inv) => {
                 const co = companyMap.get(inv.companyId);
+                const usdEquiv = inv.currency !== 'USD' && inv.exchangeRateToUSD
+                  ? convertToUSD(inv.totalAmount, inv.currency, inv.exchangeRateToUSD)
+                  : null;
                 return (
                   <div key={inv.id} className="flex items-center justify-between text-sm">
                     <span>{co?.name} <span className="text-gray-400">#{inv.invoiceNumber}</span></span>
-                    <span className="font-medium">{formatCurrency(inv.totalAmount, inv.currency)}</span>
+                    <span className="font-medium tabular-nums">
+                      {formatCurrency(inv.totalAmount, inv.currency)}
+                      {usdEquiv != null && (
+                        <span className="text-xs text-gray-400 ml-1">({formatCurrency(usdEquiv, 'USD')})</span>
+                      )}
+                    </span>
                   </div>
                 );
               })}

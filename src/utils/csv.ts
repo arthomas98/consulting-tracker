@@ -59,11 +59,12 @@ export function exportInvoicesCsv(
   companies: Company[]
 ): string {
   const companyMap = new Map(companies.map((c) => [c.id, c]));
-  const header = ['Invoice #', 'Company', 'Date', 'Hours', 'Amount', 'Currency', 'Status', 'Paid Date', 'Billing Type', 'Retainer Month'];
+  const header = ['Invoice #', 'Company', 'Date', 'Hours', 'Amount', 'Currency', 'Status', 'Paid Date', 'Billing Type', 'Retainer Month', 'Exchange Rate to USD', 'Amount (USD)'];
   const rows = invoices
     .sort((a, b) => a.invoiceDate.localeCompare(b.invoiceDate))
     .map((i) => {
       const company = companyMap.get(i.companyId);
+      const amountUSD = i.exchangeRateToUSD != null ? (i.totalAmount * i.exchangeRateToUSD).toFixed(2) : '';
       return toCsvRow([
         i.invoiceNumber ?? '',
         company?.name ?? '',
@@ -75,6 +76,8 @@ export function exportInvoicesCsv(
         i.paidDate ? formatDate(i.paidDate) : '',
         i.billingType ?? 'hourly',
         i.retainerMonth ?? '',
+        i.exchangeRateToUSD != null ? String(i.exchangeRateToUSD) : '',
+        amountUSD,
       ]);
     });
   return [toCsvRow(header), ...rows].join('\n');

@@ -17,6 +17,7 @@ export interface Invoice {
   notes?: string;
   billingType?: BillingType;
   retainerMonth?: string;
+  exchangeRateToUSD?: number;
   createdAt: string;
   updatedAt: string;
 }
