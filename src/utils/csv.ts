@@ -25,7 +25,7 @@ export function exportTimeEntriesCsv(
 ): string {
   const companyMap = new Map(companies.map((c) => [c.id, c]));
   const projectMap = new Map(projects.map((p) => [p.id, p]));
-  const header = ['Date', 'Company', 'Project', 'Hours', 'Rate', 'Currency', 'Amount', 'Description', 'Invoice #', 'Invoice Status', 'Paid Date'];
+  const header = ['Date', 'Company', 'Project', 'Hours', 'Rate', 'Currency', 'Amount', 'Description', 'Invoice #', 'Invoice Status', 'Paid Date', 'Billing Type'];
   const rows = entries
     .sort((a, b) => a.date.localeCompare(b.date))
     .map((e) => {
@@ -48,6 +48,7 @@ export function exportTimeEntriesCsv(
         invoice?.invoiceNumber ?? '',
         status,
         paidDate ? formatDate(paidDate) : '',
+        company?.billingType ?? 'hourly',
       ]);
     });
   return [toCsvRow(header), ...rows].join('\n');
@@ -58,7 +59,7 @@ export function exportInvoicesCsv(
   companies: Company[]
 ): string {
   const companyMap = new Map(companies.map((c) => [c.id, c]));
-  const header = ['Invoice #', 'Company', 'Date', 'Hours', 'Amount', 'Currency', 'Status', 'Paid Date'];
+  const header = ['Invoice #', 'Company', 'Date', 'Hours', 'Amount', 'Currency', 'Status', 'Paid Date', 'Billing Type', 'Retainer Month'];
   const rows = invoices
     .sort((a, b) => a.invoiceDate.localeCompare(b.invoiceDate))
     .map((i) => {
@@ -72,6 +73,8 @@ export function exportInvoicesCsv(
         i.currency,
         i.status,
         i.paidDate ? formatDate(i.paidDate) : '',
+        i.billingType ?? 'hourly',
+        i.retainerMonth ?? '',
       ]);
     });
   return [toCsvRow(header), ...rows].join('\n');

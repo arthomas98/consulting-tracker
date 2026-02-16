@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useStorage } from '../../contexts/StorageContext';
 import type { TimeEntry } from '../../types';
-import { parseHoursInput } from '../../utils/calculations';
+import { parseHoursInput, isFixedMonthly } from '../../utils/calculations';
 import { today } from '../../utils/dateUtils';
 
 interface TimeEntryFormProps {
@@ -25,6 +25,8 @@ export default function TimeEntryForm({ initial, onDone, compact }: TimeEntryFor
   const [description, setDescription] = useState(initial?.description || '');
   const [error, setError] = useState('');
 
+  const selectedCompany = companies.find((c) => c.id === companyId);
+  const isRetainer = selectedCompany ? isFixedMonthly(selectedCompany) : false;
   const companyProjects = projects.filter((p) => p.companyId === companyId && p.isActive);
 
   function handleSubmit(e: React.FormEvent) {
@@ -37,7 +39,13 @@ export default function TimeEntryForm({ initial, onDone, compact }: TimeEntryFor
     let hours = 0;
     let fixedAmount: number | undefined;
 
-    if (mode === 'hours') {
+    if (isRetainer) {
+      // Retainer: hours are optional record-keeping only
+      if (hoursInput.trim()) {
+        const parsed = parseHoursInput(hoursInput);
+        if (parsed !== null && parsed > 0) hours = parsed;
+      }
+    } else if (mode === 'hours') {
       const parsed = parseHoursInput(hoursInput);
       if (parsed === null || parsed <= 0) { setError('Enter valid hours (e.g., 1.5 or 1:30)'); return; }
       hours = parsed;
@@ -107,31 +115,43 @@ export default function TimeEntryForm({ initial, onDone, compact }: TimeEntryFor
           </select>
         )}
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="border rounded-md px-2 py-1.5 text-sm" />
-        {modeToggle}
-        {mode === 'hours' ? (
+        {isRetainer ? (
           <input
             type="text"
             value={hoursInput}
             onChange={(e) => setHoursInput(e.target.value)}
-            placeholder="Hours"
-            className="border rounded-md px-2 py-1.5 text-sm w-20"
+            placeholder="Hours (opt)"
+            className="border rounded-md px-2 py-1.5 text-sm w-24"
           />
         ) : (
           <>
-            <input
-              type="text"
-              value={amountInput}
-              onChange={(e) => setAmountInput(e.target.value)}
-              placeholder="$ Amount"
-              className="border rounded-md px-2 py-1.5 text-sm w-24"
-            />
-            <input
-              type="text"
-              value={hoursInput}
-              onChange={(e) => setHoursInput(e.target.value)}
-              placeholder="Hours (opt)"
-              className="border rounded-md px-2 py-1.5 text-sm w-24"
-            />
+            {modeToggle}
+            {mode === 'hours' ? (
+              <input
+                type="text"
+                value={hoursInput}
+                onChange={(e) => setHoursInput(e.target.value)}
+                placeholder="Hours"
+                className="border rounded-md px-2 py-1.5 text-sm w-20"
+              />
+            ) : (
+              <>
+                <input
+                  type="text"
+                  value={amountInput}
+                  onChange={(e) => setAmountInput(e.target.value)}
+                  placeholder="$ Amount"
+                  className="border rounded-md px-2 py-1.5 text-sm w-24"
+                />
+                <input
+                  type="text"
+                  value={hoursInput}
+                  onChange={(e) => setHoursInput(e.target.value)}
+                  placeholder="Hours (opt)"
+                  className="border rounded-md px-2 py-1.5 text-sm w-24"
+                />
+              </>
+            )}
           </>
         )}
         <input
@@ -167,52 +187,76 @@ export default function TimeEntryForm({ initial, onDone, compact }: TimeEntryFor
           </select>
         </div>
       )}
-      <div>
-        <div className="flex items-center justify-between mb-1">
-          <label className="text-sm font-medium text-gray-700">Entry type</label>
-          {modeToggle}
-        </div>
-      </div>
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Date *</label>
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm" />
-        </div>
-        {mode === 'hours' ? (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Hours * <span className="text-gray-400 font-normal">(e.g., 1.5 or 1:30)</span></label>
-            <input
-              type="text"
-              value={hoursInput}
-              onChange={(e) => setHoursInput(e.target.value)}
-              placeholder="1.5 or 1:30"
-              className="w-full border rounded-md px-3 py-2 text-sm"
-            />
+      {isRetainer ? (
+        <>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Date *</label>
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Hours <span className="text-gray-400 font-normal">(optional, for your records)</span></label>
+              <input
+                type="text"
+                value={hoursInput}
+                onChange={(e) => setHoursInput(e.target.value)}
+                placeholder="1.5 or 1:30"
+                className="w-full border rounded-md px-3 py-2 text-sm"
+              />
+            </div>
           </div>
-        ) : (
+          <p className="text-xs text-gray-400">Retainer client — time entries are for tracking only. Revenue comes from monthly retainer invoices.</p>
+        </>
+      ) : (
+        <>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Amount *</label>
-            <input
-              type="text"
-              value={amountInput}
-              onChange={(e) => setAmountInput(e.target.value)}
-              placeholder="150.00"
-              className="w-full border rounded-md px-3 py-2 text-sm"
-            />
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-sm font-medium text-gray-700">Entry type</label>
+              {modeToggle}
+            </div>
           </div>
-        )}
-      </div>
-      {mode === 'amount' && (
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Hours <span className="text-gray-400 font-normal">(optional, for your records)</span></label>
-          <input
-            type="text"
-            value={hoursInput}
-            onChange={(e) => setHoursInput(e.target.value)}
-            placeholder="1.5 or 1:30"
-            className="w-full border rounded-md px-3 py-2 text-sm"
-          />
-        </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Date *</label>
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm" />
+            </div>
+            {mode === 'hours' ? (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Hours * <span className="text-gray-400 font-normal">(e.g., 1.5 or 1:30)</span></label>
+                <input
+                  type="text"
+                  value={hoursInput}
+                  onChange={(e) => setHoursInput(e.target.value)}
+                  placeholder="1.5 or 1:30"
+                  className="w-full border rounded-md px-3 py-2 text-sm"
+                />
+              </div>
+            ) : (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Amount *</label>
+                <input
+                  type="text"
+                  value={amountInput}
+                  onChange={(e) => setAmountInput(e.target.value)}
+                  placeholder="150.00"
+                  className="w-full border rounded-md px-3 py-2 text-sm"
+                />
+              </div>
+            )}
+          </div>
+          {mode === 'amount' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Hours <span className="text-gray-400 font-normal">(optional, for your records)</span></label>
+              <input
+                type="text"
+                value={hoursInput}
+                onChange={(e) => setHoursInput(e.target.value)}
+                placeholder="1.5 or 1:30"
+                className="w-full border rounded-md px-3 py-2 text-sm"
+              />
+            </div>
+          )}
+        </>
       )}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">Description *</label>

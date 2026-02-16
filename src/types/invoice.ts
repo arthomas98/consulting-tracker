@@ -1,4 +1,4 @@
-import type { Currency } from './company';
+import type { Currency, BillingType } from './company';
 
 export type InvoiceStatus = 'draft' | 'sent' | 'paid';
 
@@ -15,6 +15,8 @@ export interface Invoice {
   status: InvoiceStatus;
   paidDate?: string;
   notes?: string;
+  billingType?: BillingType;
+  retainerMonth?: string;
   createdAt: string;
   updatedAt: string;
 }

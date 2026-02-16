@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useStorage } from '../../contexts/StorageContext';
 import type { TimeEntry } from '../../types';
-import { getEntryPaymentStatus } from '../../utils/calculations';
+import { getEntryPaymentStatus, isFixedMonthly } from '../../utils/calculations';
 import { formatDate, today, getWeekDates } from '../../utils/dateUtils';
 import { formatCurrency, formatHours } from '../../utils/formatCurrency';
 import TimeEntryForm from './TimeEntryForm';
@@ -14,6 +14,7 @@ const statusColors: Record<string, string> = {
   'Draft': 'gray',
   'Uninvoiced': 'orange',
   'Unpaid': 'orange',
+  'Tracking only': 'gray',
 };
 
 export default function TimePage() {
@@ -79,14 +80,14 @@ export default function TimePage() {
         <span className="text-gray-600 flex-1 min-w-0 truncate">{entry.description}</span>
         <Badge color={statusColors[status] || 'gray'}>{status}</Badge>
         <span className="text-right shrink-0 w-14 tabular-nums">
-          {entry.fixedAmount != null
-            ? (entry.hours > 0 ? `${formatHours(entry.hours)}h` : '')
-            : `${formatHours(entry.hours)}h`}
+          {entry.hours > 0 ? `${formatHours(entry.hours)}h` : '—'}
         </span>
         <span className="text-right shrink-0 w-22 font-medium tabular-nums">
-          {entry.fixedAmount != null
-            ? (company ? formatCurrency(entry.fixedAmount, company.currency) : `$${entry.fixedAmount}`)
-            : (company ? formatCurrency(entry.hours * company.hourlyRate, company.currency) : '')}
+          {company && isFixedMonthly(company)
+            ? '—'
+            : entry.fixedAmount != null
+              ? (company ? formatCurrency(entry.fixedAmount, company.currency) : `$${entry.fixedAmount}`)
+              : (company ? formatCurrency(entry.hours * company.hourlyRate, company.currency) : '')}
         </span>
         <div className="flex gap-1 shrink-0 w-36 justify-end">
           {canTogglePaid && !entry.paidDate && (

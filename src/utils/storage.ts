@@ -27,7 +27,10 @@ function write<T>(key: string, data: T[]): void {
 
 // Companies
 export function getCompanies(): Company[] {
-  return read<Company>(KEYS.companies);
+  return read<Company>(KEYS.companies).map((c) => ({
+    ...c,
+    billingType: c.billingType || 'hourly',
+  }));
 }
 
 export function saveCompany(company: Company): Company[] {
@@ -95,7 +98,10 @@ export function saveTimeEntries(entries: TimeEntry[]): TimeEntry[] {
 
 // Invoices
 export function getInvoices(): Invoice[] {
-  return read<Invoice>(KEYS.invoices);
+  return read<Invoice>(KEYS.invoices).map((i) => ({
+    ...i,
+    billingType: i.billingType || 'hourly',
+  }));
 }
 
 export function saveInvoice(invoice: Invoice): Invoice[] {

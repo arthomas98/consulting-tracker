@@ -1,10 +1,10 @@
-import type { Company, Currency, Project, TimeEntry, Invoice, InvoiceStatus } from '../types';
+import type { Company, Currency, BillingType, Project, TimeEntry, Invoice, InvoiceStatus } from '../types';
 import type { BusinessProfile } from '../utils/storage';
 
 // Map app data to Google Sheets rows (header + data rows)
 
 export function companiesToRows(companies: Company[]): string[][] {
-  const header = ['ID', 'Name', 'Currency', 'Hourly Rate', 'Invoice Required', 'Payment Terms', 'Payment Method', 'Contact Name', 'Contact Email', 'Notes', 'Active', 'Created', 'Updated'];
+  const header = ['ID', 'Name', 'Currency', 'Hourly Rate', 'Invoice Required', 'Payment Terms', 'Payment Method', 'Contact Name', 'Contact Email', 'Notes', 'Active', 'Created', 'Updated', 'Billing Type', 'Monthly Rate'];
   const rows = companies.map((c) => [
     c.id, c.name, c.currency, String(c.hourlyRate),
     c.invoiceRequired ? 'Yes' : 'No',
@@ -12,6 +12,8 @@ export function companiesToRows(companies: Company[]): string[][] {
     c.contactName || '', c.contactEmail || '',
     c.notes || '', c.isActive ? 'Yes' : 'No',
     c.createdAt, c.updatedAt,
+    c.billingType || 'hourly',
+    c.monthlyRate != null ? String(c.monthlyRate) : '',
   ]);
   return [header, ...rows];
 }
@@ -39,7 +41,7 @@ export function timeEntriesToRows(entries: TimeEntry[]): string[][] {
 }
 
 export function invoicesToRows(invoices: Invoice[]): string[][] {
-  const header = ['ID', 'Company ID', 'Invoice #', 'Date', 'Time Entry IDs', 'Total Hours', 'Total Amount', 'Currency', 'Rate Used', 'Status', 'Paid Date', 'Notes', 'Created', 'Updated'];
+  const header = ['ID', 'Company ID', 'Invoice #', 'Date', 'Time Entry IDs', 'Total Hours', 'Total Amount', 'Currency', 'Rate Used', 'Status', 'Paid Date', 'Notes', 'Created', 'Updated', 'Billing Type', 'Retainer Month'];
   const rows = invoices.map((i) => [
     i.id, i.companyId, i.invoiceNumber || '', i.invoiceDate,
     i.timeEntryIds.join(';'),
@@ -47,6 +49,8 @@ export function invoicesToRows(invoices: Invoice[]): string[][] {
     i.currency, String(i.rateUsed),
     i.status, i.paidDate || '',
     i.notes || '', i.createdAt, i.updatedAt,
+    i.billingType || 'hourly',
+    i.retainerMonth || '',
   ]);
   return [header, ...rows];
 }
@@ -67,11 +71,15 @@ export function profileToRows(profile: BusinessProfile): string[][] {
 
 export function rowsToCompanies(rows: string[][]): Company[] {
   if (rows.length <= 1) return []; // header only or empty
+  const header = rows[0];
+  const hasBillingType = header.includes('Billing Type');
   return rows.slice(1).map((r) => ({
     id: r[0],
     name: r[1],
     currency: (r[2] as Currency) || 'USD',
+    billingType: (hasBillingType && r[13] ? r[13] as BillingType : 'hourly'),
     hourlyRate: parseFloat(r[3]) || 0,
+    monthlyRate: hasBillingType && r[14] ? parseFloat(r[14]) : undefined,
     invoiceRequired: r[4] === 'Yes',
     paymentTerms: r[5] || undefined,
     paymentMethod: r[6] || undefined,
@@ -114,6 +122,8 @@ export function rowsToTimeEntries(rows: string[][]): TimeEntry[] {
 
 export function rowsToInvoices(rows: string[][]): Invoice[] {
   if (rows.length <= 1) return [];
+  const header = rows[0];
+  const hasBillingType = header.includes('Billing Type');
   return rows.slice(1).map((r) => ({
     id: r[0],
     companyId: r[1],
@@ -127,6 +137,8 @@ export function rowsToInvoices(rows: string[][]): Invoice[] {
     status: (r[9] as InvoiceStatus) || 'draft',
     paidDate: r[10] || undefined,
     notes: r[11] || undefined,
+    billingType: (hasBillingType && r[14] ? r[14] as BillingType : 'hourly'),
+    retainerMonth: hasBillingType && r[15] ? r[15] : undefined,
     createdAt: r[12],
     updatedAt: r[13],
   }));

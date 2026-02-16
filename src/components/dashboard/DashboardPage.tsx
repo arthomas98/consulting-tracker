@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useStorage } from '../../contexts/StorageContext';
-import { totalsByCurrency, entryAmount } from '../../utils/calculations';
-import { startOfMonth, endOfMonth, startOfYear, endOfYear, today, isInRange, getISOWeek, getWeekLabel, getMonthIndex, shortMonthName, formatDate } from '../../utils/dateUtils';
+import { totalsByCurrency, entryAmount, isFixedMonthly } from '../../utils/calculations';
+import { startOfMonth, endOfMonth, startOfYear, endOfYear, today, isInRange, getISOWeek, getWeekLabel, getMonthIndex, shortMonthName, formatDate, getMonthLabel } from '../../utils/dateUtils';
 import { formatCurrency, formatCurrencyShort, formatHours } from '../../utils/formatCurrency';
 import type { Currency } from '../../types';
 import { Link } from 'react-router-dom';
@@ -19,21 +19,72 @@ export default function DashboardPage() {
   const monthEnd = endOfMonth(now);
   const yearStart = startOfYear(year);
   const yearEnd = endOfYear(year);
+  const currentMonth = today().substring(0, 7);
 
   const companyMap = useMemo(() => new Map(companies.map((c) => [c.id, c])), [companies]);
 
-  const monthEntries = useMemo(
-    () => timeEntries.filter((e) => e.date >= monthStart && e.date <= monthEnd),
-    [timeEntries, monthStart, monthEnd]
+  // Filter out fixed-monthly entries from hourly totals
+  const monthEntriesHourly = useMemo(
+    () => timeEntries.filter((e) => {
+      if (e.date < monthStart || e.date > monthEnd) return false;
+      const co = companyMap.get(e.companyId);
+      return co && !isFixedMonthly(co);
+    }),
+    [timeEntries, monthStart, monthEnd, companyMap]
   );
 
-  const yearEntries = useMemo(
-    () => timeEntries.filter((e) => isInRange(e.date, yearStart, yearEnd)),
-    [timeEntries, yearStart, yearEnd]
+  const yearEntriesHourly = useMemo(
+    () => timeEntries.filter((e) => {
+      if (!isInRange(e.date, yearStart, yearEnd)) return false;
+      const co = companyMap.get(e.companyId);
+      return co && !isFixedMonthly(co);
+    }),
+    [timeEntries, yearStart, yearEnd, companyMap]
   );
 
-  const monthTotals = useMemo(() => totalsByCurrency(monthEntries, companies), [monthEntries, companies]);
-  const yearTotals = useMemo(() => totalsByCurrency(yearEntries, companies), [yearEntries, companies]);
+  // Retainer invoices in period
+  const monthRetainerInvoices = useMemo(
+    () => invoices.filter((i) => i.billingType === 'fixed_monthly' && i.retainerMonth === currentMonth),
+    [invoices, currentMonth]
+  );
+
+  const yearRetainerInvoices = useMemo(
+    () => invoices.filter((i) => {
+      if (i.billingType !== 'fixed_monthly' || !i.retainerMonth) return false;
+      return i.retainerMonth >= yearStart.substring(0, 7) && i.retainerMonth <= yearEnd.substring(0, 7);
+    }),
+    [invoices, yearStart, yearEnd]
+  );
+
+  // Month totals: hourly entries + retainer invoices
+  const monthTotals = useMemo(() => {
+    const hourlyTotals = totalsByCurrency(monthEntriesHourly, companies);
+    const totalsMap = new Map<Currency, { hours: number; amount: number }>();
+    for (const t of hourlyTotals) {
+      totalsMap.set(t.currency, { hours: t.hours, amount: t.amount });
+    }
+    for (const inv of monthRetainerInvoices) {
+      const existing = totalsMap.get(inv.currency) || { hours: 0, amount: 0 };
+      existing.amount += inv.totalAmount;
+      totalsMap.set(inv.currency, existing);
+    }
+    return Array.from(totalsMap.entries()).map(([currency, t]) => ({ currency, ...t }));
+  }, [monthEntriesHourly, companies, monthRetainerInvoices]);
+
+  // Year totals: hourly entries + retainer invoices
+  const yearTotals = useMemo(() => {
+    const hourlyTotals = totalsByCurrency(yearEntriesHourly, companies);
+    const totalsMap = new Map<Currency, { hours: number; amount: number }>();
+    for (const t of hourlyTotals) {
+      totalsMap.set(t.currency, { hours: t.hours, amount: t.amount });
+    }
+    for (const inv of yearRetainerInvoices) {
+      const existing = totalsMap.get(inv.currency) || { hours: 0, amount: 0 };
+      existing.amount += inv.totalAmount;
+      totalsMap.set(inv.currency, existing);
+    }
+    return Array.from(totalsMap.entries()).map(([currency, t]) => ({ currency, ...t }));
+  }, [yearEntriesHourly, companies, yearRetainerInvoices]);
 
   const monthHours = monthTotals.reduce((s, t) => s + t.hours, 0);
   const yearHours = yearTotals.reduce((s, t) => s + t.hours, 0);
@@ -43,12 +94,12 @@ export default function DashboardPage() {
     if (!chartOpen) return [];
 
     if (chartMode === 'month') {
-      // 12 months
       const buckets: { label: string; amounts: Map<Currency, number> }[] = [];
       for (let m = 0; m < 12; m++) {
         buckets.push({ label: shortMonthName(m), amounts: new Map() });
       }
-      for (const e of yearEntries) {
+      // Hourly entries
+      for (const e of yearEntriesHourly) {
         const mi = getMonthIndex(e.date);
         const co = companyMap.get(e.companyId);
         if (!co) continue;
@@ -56,11 +107,20 @@ export default function DashboardPage() {
         const prev = buckets[mi].amounts.get(cur) || 0;
         buckets[mi].amounts.set(cur, prev + entryAmount(e, co.hourlyRate));
       }
+      // Retainer invoices by month
+      for (const inv of yearRetainerInvoices) {
+        if (!inv.retainerMonth) continue;
+        const mi = parseInt(inv.retainerMonth.split('-')[1], 10) - 1;
+        if (mi >= 0 && mi < 12) {
+          const prev = buckets[mi].amounts.get(inv.currency) || 0;
+          buckets[mi].amounts.set(inv.currency, prev + inv.totalAmount);
+        }
+      }
       return buckets;
     } else {
-      // Weekly buckets
+      // Weekly buckets — only hourly entries (retainers are monthly)
       const weekMap = new Map<number, { label: string; amounts: Map<Currency, number> }>();
-      for (const e of yearEntries) {
+      for (const e of yearEntriesHourly) {
         const wk = getISOWeek(e.date);
         if (!weekMap.has(wk)) {
           weekMap.set(wk, { label: getWeekLabel(e.date), amounts: new Map() });
@@ -75,7 +135,7 @@ export default function DashboardPage() {
         .sort(([a], [b]) => a - b)
         .map(([, v]) => v);
     }
-  }, [chartOpen, chartMode, yearEntries, companyMap]);
+  }, [chartOpen, chartMode, yearEntriesHourly, yearRetainerInvoices, companyMap]);
 
   // Determine all currencies present and max value for scaling
   const allCurrencies = useMemo(() => {
@@ -96,12 +156,12 @@ export default function DashboardPage() {
 
   const barColors: Record<Currency, string> = { USD: 'bg-blue-500', EUR: 'bg-emerald-500', GBP: 'bg-purple-500' };
 
-  // Action items
+  // Action items — skip fixed-monthly for uninvoiced entries
   const uninvoicedByCompany = useMemo(() => {
     const invoicedIds = new Set(invoices.flatMap((i) => i.timeEntryIds));
     const uninvoiced = timeEntries.filter((e) => {
       const co = companyMap.get(e.companyId);
-      return co?.invoiceRequired && !invoicedIds.has(e.id);
+      return co?.invoiceRequired && !isFixedMonthly(co) && !invoicedIds.has(e.id);
     });
     const grouped = new Map<string, number>();
     for (const e of uninvoiced) {
@@ -112,6 +172,16 @@ export default function DashboardPage() {
       hours,
     })).filter((x) => x.company);
   }, [timeEntries, invoices, companyMap]);
+
+  // Fixed-monthly companies missing a retainer invoice for current month
+  const uninvoicedRetainers = useMemo(() => {
+    return companies.filter((co) => {
+      if (!co.isActive || !isFixedMonthly(co) || !co.invoiceRequired) return false;
+      return !invoices.some(
+        (i) => i.companyId === co.id && i.billingType === 'fixed_monthly' && i.retainerMonth === currentMonth
+      );
+    });
+  }, [companies, invoices, currentMonth]);
 
   const awaitingPayment = useMemo(
     () => invoices.filter((i) => i.status === 'sent'),
@@ -291,7 +361,7 @@ export default function DashboardPage() {
         {/* Needs invoicing */}
         <div className="bg-white border rounded-xl p-4 shadow-sm">
           <h3 className="text-sm font-semibold text-gray-700 mb-3">Needs Invoicing</h3>
-          {uninvoicedByCompany.length === 0 ? (
+          {uninvoicedByCompany.length === 0 && uninvoicedRetainers.length === 0 ? (
             <p className="text-sm text-gray-400">All caught up!</p>
           ) : (
             <div className="space-y-2">
@@ -299,6 +369,12 @@ export default function DashboardPage() {
                 <div key={company!.id} className="flex items-center justify-between text-sm">
                   <span>{company!.name}</span>
                   <span className="font-medium">{formatHours(hours)}h</span>
+                </div>
+              ))}
+              {uninvoicedRetainers.map((co) => (
+                <div key={co.id} className="flex items-center justify-between text-sm">
+                  <span>{co.name} <span className="text-xs text-gray-400">(retainer)</span></span>
+                  <span className="font-medium text-gray-500">{getMonthLabel(currentMonth + '-01')}</span>
                 </div>
               ))}
             </div>

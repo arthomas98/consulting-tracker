@@ -1,5 +1,9 @@
 import type { TimeEntry, Invoice, Company, Currency } from '../types';
 
+export function isFixedMonthly(company: Company): boolean {
+  return company.billingType === 'fixed_monthly';
+}
+
 export function roundToQuarter(hours: number): number {
   return Math.round(hours * 4) / 4;
 }
@@ -80,6 +84,22 @@ export function getEntryPaymentStatus(
   invoices: Invoice[]
 ): string {
   if (!company) return 'Unknown';
+
+  // For fixed-monthly companies, status depends on retainer invoice for the entry's month
+  if (isFixedMonthly(company)) {
+    const entryMonth = entry.date.substring(0, 7);
+    const retainerInv = invoices.find(
+      (i) => i.companyId === company.id && i.billingType === 'fixed_monthly' && i.retainerMonth === entryMonth
+    );
+    if (retainerInv) {
+      switch (retainerInv.status) {
+        case 'paid': return 'Paid';
+        case 'sent': return 'Invoiced / Awaiting payment';
+        case 'draft': return 'Draft';
+      }
+    }
+    return 'Tracking only';
+  }
 
   const invoice = invoices.find((i) => i.timeEntryIds.includes(entry.id));
 

@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useStorage } from '../../contexts/StorageContext';
 import type { Invoice } from '../../types';
 import type { BusinessProfile } from '../../utils/storage';
-import { formatDate, today } from '../../utils/dateUtils';
+import { formatDate, today, getMonthLabel } from '../../utils/dateUtils';
 import { formatCurrency, formatHours } from '../../utils/formatCurrency';
 import Badge from '../shared/Badge';
 
@@ -32,11 +32,14 @@ function buildPrintHtml(
   profile: BusinessProfile,
   notes?: string,
 ) {
+  const isRetainer = invoice.billingType === 'fixed_monthly';
+  const rateLabel = isRetainer ? 'Monthly Retainer' : `${rate}/hr`;
+
   const rows = entries.map((e) =>
     `<tr>
       <td style="padding:6px 8px;border-bottom:1px solid #eee;color:#555">${esc(e.date)}</td>
       <td style="padding:6px 8px;border-bottom:1px solid #eee">${e.project ? `<span style="color:#999;margin-right:4px">[${esc(e.project)}]</span>` : ''}${esc(e.description)}</td>
-      <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right">${e.hours > 0 ? formatHours(e.hours) : '—'}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right">${isRetainer ? '—' : (e.hours > 0 ? formatHours(e.hours) : '—')}</td>
       <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right">${esc(e.amount)}</td>
     </tr>`
   ).join('');
@@ -86,7 +89,7 @@ function buildPrintHtml(
     <div class="label">Invoice Details</div>
     <div><span style="color:#888">Invoice #:</span> ${esc(invoice.invoiceNumber || '—')}</div>
     <div><span style="color:#888">Date:</span> ${formatDate(invoice.invoiceDate)}</div>
-    <div><span style="color:#888">Rate:</span> ${rate}/hr</div>
+    <div><span style="color:#888">Rate:</span> ${rateLabel}</div>
   </div>
 </div>
 <table>
@@ -94,7 +97,7 @@ function buildPrintHtml(
   <tbody>${rows}</tbody>
   <tfoot><tr>
     <td colspan="2">Total</td>
-    <td style="text-align:right">${totalHours}</td>
+    <td style="text-align:right">${isRetainer ? '—' : totalHours}</td>
     <td style="text-align:right">${totalAmount}</td>
   </tr></tfoot>
 </table>
@@ -108,6 +111,8 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
   const company = companies.find((c) => c.id === invoice.companyId);
   const projectMap = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects]);
 
+  const isRetainer = invoice.billingType === 'fixed_monthly';
+
   const entries = useMemo(
     () => timeEntries.filter((e) => invoice.timeEntryIds.includes(e.id)).sort((a, b) => a.date.localeCompare(b.date)),
     [timeEntries, invoice.timeEntryIds]
@@ -118,13 +123,25 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
   }
 
   function handlePrint() {
-    const printEntries = entries.map((e) => ({
-      date: formatDate(e.date),
-      project: e.projectId ? projectMap.get(e.projectId)?.name : undefined,
-      description: e.description,
-      hours: e.hours,
-      amount: formatCurrency(e.fixedAmount != null ? e.fixedAmount : e.hours * invoice.rateUsed, invoice.currency),
-    }));
+    let printEntries: { date: string; project?: string; description: string; hours: number; amount: string }[];
+
+    if (isRetainer && entries.length === 0) {
+      const monthLabel = invoice.retainerMonth ? getMonthLabel(invoice.retainerMonth + '-01') : '';
+      printEntries = [{
+        date: formatDate(invoice.invoiceDate),
+        description: `Monthly advisory retainer — ${monthLabel}`,
+        hours: 0,
+        amount: formatCurrency(invoice.totalAmount, invoice.currency),
+      }];
+    } else {
+      printEntries = entries.map((e) => ({
+        date: formatDate(e.date),
+        project: e.projectId ? projectMap.get(e.projectId)?.name : undefined,
+        description: e.description,
+        hours: e.hours,
+        amount: formatCurrency(e.fixedAmount != null ? e.fixedAmount : e.hours * invoice.rateUsed, invoice.currency),
+      }));
+    }
 
     const html = buildPrintHtml(
       invoice,
@@ -144,6 +161,8 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
     }
   }
 
+  const monthLabel = invoice.retainerMonth ? getMonthLabel(invoice.retainerMonth + '-01') : '';
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -156,9 +175,10 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
 
       <div className="grid grid-cols-2 gap-4 text-sm">
         <div><span className="text-gray-500">Date:</span> {formatDate(invoice.invoiceDate)}</div>
-        <div><span className="text-gray-500">Rate:</span> {formatCurrency(invoice.rateUsed, invoice.currency)}/hr</div>
-        <div><span className="text-gray-500">Total Hours:</span> {formatHours(invoice.totalHours)}</div>
+        <div><span className="text-gray-500">Rate:</span> {isRetainer ? 'Monthly Retainer' : `${formatCurrency(invoice.rateUsed, invoice.currency)}/hr`}</div>
+        {!isRetainer && <div><span className="text-gray-500">Total Hours:</span> {formatHours(invoice.totalHours)}</div>}
         <div><span className="text-gray-500">Total Amount:</span> <span className="font-semibold">{formatCurrency(invoice.totalAmount, invoice.currency)}</span></div>
+        {isRetainer && invoice.retainerMonth && <div><span className="text-gray-500">Retainer Month:</span> {monthLabel}</div>}
         {invoice.paidDate && <div><span className="text-gray-500">Paid:</span> {formatDate(invoice.paidDate)}</div>}
       </div>
 
@@ -172,27 +192,35 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
             <tr>
               <th className="text-left px-3 py-2 font-medium">Date</th>
               <th className="text-left px-3 py-2 font-medium">Description</th>
-              <th className="text-right px-3 py-2 font-medium">Hours</th>
+              {!isRetainer && <th className="text-right px-3 py-2 font-medium">Hours</th>}
               <th className="text-right px-3 py-2 font-medium">Amount</th>
             </tr>
           </thead>
           <tbody className="divide-y">
-            {entries.map((e) => (
-              <tr key={e.id}>
-                <td className="px-3 py-2 text-gray-500">{formatDate(e.date)}</td>
-                <td className="px-3 py-2">
-                  {e.projectId && <span className="text-xs text-gray-400 mr-1">[{projectMap.get(e.projectId)?.name}]</span>}
-                  {e.description}
-                </td>
-                <td className="px-3 py-2 text-right">{e.hours > 0 ? formatHours(e.hours) : '—'}</td>
-                <td className="px-3 py-2 text-right">{formatCurrency(e.fixedAmount != null ? e.fixedAmount : e.hours * invoice.rateUsed, invoice.currency)}</td>
+            {isRetainer && entries.length === 0 ? (
+              <tr>
+                <td className="px-3 py-2 text-gray-500">{formatDate(invoice.invoiceDate)}</td>
+                <td className="px-3 py-2">Monthly advisory retainer — {monthLabel}</td>
+                <td className="px-3 py-2 text-right">{formatCurrency(invoice.totalAmount, invoice.currency)}</td>
               </tr>
-            ))}
+            ) : (
+              entries.map((e) => (
+                <tr key={e.id}>
+                  <td className="px-3 py-2 text-gray-500">{formatDate(e.date)}</td>
+                  <td className="px-3 py-2">
+                    {e.projectId && <span className="text-xs text-gray-400 mr-1">[{projectMap.get(e.projectId)?.name}]</span>}
+                    {e.description}
+                  </td>
+                  {!isRetainer && <td className="px-3 py-2 text-right">{e.hours > 0 ? formatHours(e.hours) : '—'}</td>}
+                  <td className="px-3 py-2 text-right">{formatCurrency(e.fixedAmount != null ? e.fixedAmount : e.hours * invoice.rateUsed, invoice.currency)}</td>
+                </tr>
+              ))
+            )}
           </tbody>
           <tfoot className="bg-gray-50 font-semibold">
             <tr>
-              <td className="px-3 py-2" colSpan={2}>Total</td>
-              <td className="px-3 py-2 text-right">{formatHours(invoice.totalHours)}</td>
+              <td className="px-3 py-2" colSpan={isRetainer ? 1 : 2}>Total</td>
+              {!isRetainer && <td className="px-3 py-2 text-right">{formatHours(invoice.totalHours)}</td>}
               <td className="px-3 py-2 text-right">{formatCurrency(invoice.totalAmount, invoice.currency)}</td>
             </tr>
           </tfoot>

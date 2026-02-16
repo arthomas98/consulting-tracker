@@ -76,7 +76,7 @@ export default function InvoicesPage() {
                     <td className="px-4 py-3 font-medium">{inv.invoiceNumber || '—'}</td>
                     <td className="px-4 py-3">{company?.name || 'Unknown'}</td>
                     <td className="px-4 py-3 text-gray-500">{formatDate(inv.invoiceDate)}</td>
-                    <td className="px-4 py-3 text-right">{formatHours(inv.totalHours)}</td>
+                    <td className="px-4 py-3 text-right">{inv.billingType === 'fixed_monthly' ? '—' : formatHours(inv.totalHours)}</td>
                     <td className="px-4 py-3 text-right font-medium">{formatCurrency(inv.totalAmount, inv.currency)}</td>
                     <td className="px-4 py-3"><Badge color={statusColor[inv.status]}>{inv.status}</Badge></td>
                     <td className="px-4 py-3 text-right text-gray-500">{aging}</td>

@@ -1,9 +1,10 @@
 import { useState, useMemo } from 'react';
 import { useStorage } from '../../contexts/StorageContext';
-import { totalsByCurrency, entryAmount, getEntryPaymentStatus } from '../../utils/calculations';
+import { totalsByCurrency, entryAmount, getEntryPaymentStatus, isFixedMonthly } from '../../utils/calculations';
 import { startOfMonth, endOfMonth, startOfYear, endOfYear, isInRange, formatDate, daysSince } from '../../utils/dateUtils';
 import { formatCurrency, formatHours } from '../../utils/formatCurrency';
 import { exportTimeEntriesCsv, exportInvoicesCsv, downloadCsv } from '../../utils/csv';
+import type { Currency } from '../../types';
 import Badge from '../shared/Badge';
 
 type Period = 'month' | 'year' | 'custom';
@@ -15,6 +16,7 @@ const statusColors: Record<string, string> = {
   'Draft': 'gray',
   'Uninvoiced': 'orange',
   'Unpaid': 'orange',
+  'Tracking only': 'gray',
 };
 
 export default function ReportsPage() {
@@ -56,32 +58,80 @@ export default function ReportsPage() {
     });
   }, [invoices, dateRange, companyFilter]);
 
-  // Work Summary
+  // Retainer invoices in period (by retainerMonth in range)
+  const periodRetainerInvoices = useMemo(() => {
+    if (!dateRange.start || !dateRange.end) return [];
+    const startMonth = dateRange.start.substring(0, 7);
+    const endMonth = dateRange.end.substring(0, 7);
+    return invoices.filter((i) => {
+      if (i.billingType !== 'fixed_monthly' || !i.retainerMonth) return false;
+      if (companyFilter && i.companyId !== companyFilter) return false;
+      return i.retainerMonth >= startMonth && i.retainerMonth <= endMonth;
+    });
+  }, [invoices, dateRange, companyFilter]);
+
+  // Work Summary — for fixed-monthly companies, amount comes from retainer invoices
   const workSummary = useMemo(() => {
     const byCompany = new Map<string, { hours: number; amount: number }>();
     for (const e of filteredEntries) {
       const co = companyMap.get(e.companyId);
       if (!co) continue;
       const existing = byCompany.get(e.companyId) || { hours: 0, amount: 0 };
-      existing.hours += e.hours;
-      existing.amount += entryAmount(e, co.hourlyRate);
+      if (isFixedMonthly(co)) {
+        // Only track hours for display; amount comes from invoices
+        existing.hours += e.hours;
+      } else {
+        existing.hours += e.hours;
+        existing.amount += entryAmount(e, co.hourlyRate);
+      }
       byCompany.set(e.companyId, existing);
     }
-    return Array.from(byCompany.entries()).map(([id, data]) => ({
-      company: companyMap.get(id)!,
-      ...data,
-    }));
-  }, [filteredEntries, companyMap]);
+    // Add retainer invoice amounts for fixed-monthly companies
+    for (const inv of periodRetainerInvoices) {
+      const existing = byCompany.get(inv.companyId) || { hours: 0, amount: 0 };
+      existing.amount += inv.totalAmount;
+      byCompany.set(inv.companyId, existing);
+    }
+    // Include fixed-monthly companies that have retainer invoices but no entries
+    for (const inv of periodRetainerInvoices) {
+      if (!byCompany.has(inv.companyId)) {
+        byCompany.set(inv.companyId, { hours: 0, amount: inv.totalAmount });
+      }
+    }
+    return Array.from(byCompany.entries())
+      .map(([id, data]) => ({
+        company: companyMap.get(id)!,
+        ...data,
+      }))
+      .filter((x) => x.company);
+  }, [filteredEntries, companyMap, periodRetainerInvoices]);
 
-  const currencyTotals = useMemo(() => totalsByCurrency(filteredEntries, companies), [filteredEntries, companies]);
+  // Currency totals — only hourly companies contribute hours
+  const currencyTotals = useMemo(() => {
+    const hourlyEntries = filteredEntries.filter((e) => {
+      const co = companyMap.get(e.companyId);
+      return co && !isFixedMonthly(co);
+    });
+    const hourlyTotals = totalsByCurrency(hourlyEntries, companies);
+    const totalsMap = new Map<Currency, { hours: number; amount: number }>();
+    for (const t of hourlyTotals) {
+      totalsMap.set(t.currency, { hours: t.hours, amount: t.amount });
+    }
+    for (const inv of periodRetainerInvoices) {
+      const existing = totalsMap.get(inv.currency) || { hours: 0, amount: 0 };
+      existing.amount += inv.totalAmount;
+      totalsMap.set(inv.currency, existing);
+    }
+    return Array.from(totalsMap.entries()).map(([currency, t]) => ({ currency, ...t }));
+  }, [filteredEntries, companies, companyMap, periodRetainerInvoices]);
 
-  // Invoicing status
+  // Invoicing status — skip fixed-monthly entries
   const invoicedEntryIds = useMemo(() => new Set(invoices.flatMap((i) => i.timeEntryIds)), [invoices]);
 
   const needsInvoicing = useMemo(() => {
     return filteredEntries.filter((e) => {
       const co = companyMap.get(e.companyId);
-      return co?.invoiceRequired && !invoicedEntryIds.has(e.id) && !e.paidDate;
+      return co?.invoiceRequired && !isFixedMonthly(co) && !invoicedEntryIds.has(e.id) && !e.paidDate;
     });
   }, [filteredEntries, companyMap, invoicedEntryIds]);
 
@@ -92,9 +142,35 @@ export default function ReportsPage() {
   const ytdEntries = useMemo(() => {
     const s = startOfYear(year);
     const e = endOfYear(year);
-    return timeEntries.filter((entry) => isInRange(entry.date, s, e));
-  }, [timeEntries, year]);
-  const ytdTotals = useMemo(() => totalsByCurrency(ytdEntries, companies), [ytdEntries, companies]);
+    return timeEntries.filter((entry) => {
+      if (!isInRange(entry.date, s, e)) return false;
+      const co = companyMap.get(entry.companyId);
+      return co && !isFixedMonthly(co);
+    });
+  }, [timeEntries, year, companyMap]);
+
+  const ytdRetainerInvoices = useMemo(() => {
+    const startMonth = `${year}-01`;
+    const endMonth = `${year}-12`;
+    return invoices.filter((i) => {
+      if (i.billingType !== 'fixed_monthly' || !i.retainerMonth) return false;
+      return i.retainerMonth >= startMonth && i.retainerMonth <= endMonth;
+    });
+  }, [invoices, year]);
+
+  const ytdTotals = useMemo(() => {
+    const hourlyTotals = totalsByCurrency(ytdEntries, companies);
+    const totalsMap = new Map<Currency, { hours: number; amount: number }>();
+    for (const t of hourlyTotals) {
+      totalsMap.set(t.currency, { hours: t.hours, amount: t.amount });
+    }
+    for (const inv of ytdRetainerInvoices) {
+      const existing = totalsMap.get(inv.currency) || { hours: 0, amount: 0 };
+      existing.amount += inv.totalAmount;
+      totalsMap.set(inv.currency, existing);
+    }
+    return Array.from(totalsMap.entries()).map(([currency, t]) => ({ currency, ...t }));
+  }, [ytdEntries, companies, ytdRetainerInvoices]);
 
   function handleExportEntries() {
     const csv = exportTimeEntriesCsv(filteredEntries, companies, invoices, projects);
@@ -161,6 +237,7 @@ export default function ReportsPage() {
           ) : (
             <div className="space-y-2">
               {workSummary.map(({ company, hours, amount }) => {
+                const isRetainer = isFixedMonthly(company);
                 const isExpanded = expandedCompany === company.id;
                 const companyEntries = isExpanded
                   ? filteredEntries
@@ -173,8 +250,8 @@ export default function ReportsPage() {
                       onClick={() => setExpandedCompany(isExpanded ? null : company.id)}
                       className="w-full flex items-center text-left hover:bg-gray-50 transition-colors text-sm"
                     >
-                      <span className="px-4 py-3 flex-1 font-medium">{company.name} <span className="text-gray-400 text-xs ml-1">{isExpanded ? '\u25B2' : '\u25BC'}</span></span>
-                      <span className="px-4 py-3 text-right text-gray-500 w-28">{formatHours(hours)}h</span>
+                      <span className="px-4 py-3 flex-1 font-medium">{company.name} {isRetainer && <span className="text-xs text-purple-500 ml-1">(retainer)</span>} <span className="text-gray-400 text-xs ml-1">{isExpanded ? '\u25B2' : '\u25BC'}</span></span>
+                      <span className="px-4 py-3 text-right text-gray-500 w-28">{isRetainer ? '—' : `${formatHours(hours)}h`}</span>
                       <span className="px-4 py-3 text-right font-medium w-36">{formatCurrency(amount, company.currency)}</span>
                     </button>
                     {isExpanded && (
@@ -187,7 +264,7 @@ export default function ReportsPage() {
                               <th className="text-left px-4 py-2 font-medium">Description</th>
                               <th className="text-left px-4 py-2 font-medium">Status</th>
                               <th className="text-right px-4 py-2 font-medium">Hours</th>
-                              <th className="text-right px-4 py-2 font-medium">Amount</th>
+                              {!isRetainer && <th className="text-right px-4 py-2 font-medium">Amount</th>}
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-100">
@@ -200,8 +277,8 @@ export default function ReportsPage() {
                                   <td className="px-4 py-2 text-gray-500">{proj?.name ?? ''}</td>
                                   <td className="px-4 py-2 truncate max-w-xs">{e.description}</td>
                                   <td className="px-4 py-2"><Badge color={statusColors[status] || 'gray'}>{status}</Badge></td>
-                                  <td className="px-4 py-2 text-right">{e.hours > 0 ? formatHours(e.hours) : ''}</td>
-                                  <td className="px-4 py-2 text-right">{formatCurrency(entryAmount(e, company.hourlyRate), company.currency)}</td>
+                                  <td className="px-4 py-2 text-right">{e.hours > 0 ? formatHours(e.hours) : '—'}</td>
+                                  {!isRetainer && <td className="px-4 py-2 text-right">{formatCurrency(entryAmount(e, company.hourlyRate), company.currency)}</td>}
                                 </tr>
                               );
                             })}
@@ -341,6 +418,7 @@ export default function ReportsPage() {
             ) : (
               <div className="space-y-2">
                 {workSummary.map(({ company, hours, amount }) => {
+                  const isRetainer = isFixedMonthly(company);
                   const isExpanded = expandedCompany === company.id;
                   const companyEntries = isExpanded
                     ? filteredEntries
@@ -353,8 +431,8 @@ export default function ReportsPage() {
                         onClick={() => setExpandedCompany(isExpanded ? null : company.id)}
                         className="w-full flex items-center text-left hover:bg-gray-50 transition-colors text-sm"
                       >
-                        <span className="px-4 py-3 flex-1 font-medium">{company.name} <span className="text-gray-400 text-xs ml-1">{isExpanded ? '\u25B2' : '\u25BC'}</span></span>
-                        <span className="px-4 py-3 text-right text-gray-500 w-28">{formatHours(hours)}h</span>
+                        <span className="px-4 py-3 flex-1 font-medium">{company.name} {isRetainer && <span className="text-xs text-purple-500 ml-1">(retainer)</span>} <span className="text-gray-400 text-xs ml-1">{isExpanded ? '\u25B2' : '\u25BC'}</span></span>
+                        <span className="px-4 py-3 text-right text-gray-500 w-28">{isRetainer ? '—' : `${formatHours(hours)}h`}</span>
                         <span className="px-4 py-3 text-right font-medium w-36">{formatCurrency(amount, company.currency)}</span>
                       </button>
                       {isExpanded && (
@@ -367,7 +445,7 @@ export default function ReportsPage() {
                                 <th className="text-left px-4 py-2 font-medium">Description</th>
                                 <th className="text-left px-4 py-2 font-medium">Status</th>
                                 <th className="text-right px-4 py-2 font-medium">Hours</th>
-                                <th className="text-right px-4 py-2 font-medium">Amount</th>
+                                {!isRetainer && <th className="text-right px-4 py-2 font-medium">Amount</th>}
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
@@ -380,8 +458,8 @@ export default function ReportsPage() {
                                     <td className="px-4 py-2 text-gray-500">{proj?.name ?? ''}</td>
                                     <td className="px-4 py-2 truncate max-w-xs">{e.description}</td>
                                     <td className="px-4 py-2"><Badge color={statusColors[status] || 'gray'}>{status}</Badge></td>
-                                    <td className="px-4 py-2 text-right">{e.hours > 0 ? formatHours(e.hours) : ''}</td>
-                                    <td className="px-4 py-2 text-right">{formatCurrency(entryAmount(e, company.hourlyRate), company.currency)}</td>
+                                    <td className="px-4 py-2 text-right">{e.hours > 0 ? formatHours(e.hours) : '—'}</td>
+                                    {!isRetainer && <td className="px-4 py-2 text-right">{formatCurrency(entryAmount(e, company.hourlyRate), company.currency)}</td>}
                                   </tr>
                                 );
                               })}
