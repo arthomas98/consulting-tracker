@@ -250,20 +250,32 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
     saveInvoice({ ...invoice, status, paidDate, exchangeRateToUSD, updatedAt: new Date().toISOString() });
   }
 
-  function handlePrint() {
-    const monthLabel = invoice.retainerMonth ? getMonthLabel(invoice.retainerMonth + '-01') : '';
+  function getInvoiceData() {
+    const ml = invoice.retainerMonth ? getMonthLabel(invoice.retainerMonth + '-01') : '';
     const retainerLine = isRetainer ? {
-      description: `Monthly advisory retainer \u2014 ${monthLabel}`,
+      description: `Monthly advisory retainer \u2014 ${ml}`,
       amount: formatCurrency(invoice.totalAmount, invoice.currency),
     } : undefined;
 
+    return {
+      companyName: company?.name || 'Unknown',
+      totalHoursStr: formatHours(invoice.totalHours),
+      totalAmountStr: formatCurrency(invoice.totalAmount, invoice.currency),
+      rateStr: formatCurrency(invoice.rateUsed, invoice.currency),
+      retainerLine,
+    };
+  }
+
+  function handlePrint() {
+    const { companyName, totalHoursStr, totalAmountStr, rateStr, retainerLine } = getInvoiceData();
+
     const html = buildPrintHtml(
       invoice,
-      company?.name || 'Unknown',
+      companyName,
       grouped,
-      formatHours(invoice.totalHours),
-      formatCurrency(invoice.totalAmount, invoice.currency),
-      formatCurrency(invoice.rateUsed, invoice.currency),
+      totalHoursStr,
+      totalAmountStr,
+      rateStr,
       invoice.currency,
       profile,
       isRetainer,
@@ -276,6 +288,24 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
       win.document.write(html);
       win.document.close();
     }
+  }
+
+  async function handleSaveDocx() {
+    const { companyName, totalHoursStr, totalAmountStr, rateStr, retainerLine } = getInvoiceData();
+    const { generateInvoiceDocx } = await import('../../utils/invoiceDocx');
+    await generateInvoiceDocx(
+      invoice,
+      companyName,
+      grouped,
+      totalHoursStr,
+      totalAmountStr,
+      rateStr,
+      invoice.currency,
+      profile,
+      isRetainer,
+      retainerLine,
+      invoice.notes,
+    );
   }
 
   const monthLabel = invoice.retainerMonth ? getMonthLabel(invoice.retainerMonth + '-01') : '';
@@ -427,6 +457,9 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
           )}
         </div>
         <div className="flex gap-2">
+          <button onClick={handleSaveDocx} className="text-sm bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-md hover:bg-indigo-100">
+            Save as Word
+          </button>
           <button onClick={handlePrint} className="text-sm bg-gray-100 text-gray-700 px-3 py-1.5 rounded-md hover:bg-gray-200">
             Print / Save PDF
           </button>
