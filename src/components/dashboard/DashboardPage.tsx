@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useStorage } from '../../contexts/StorageContext';
 import { totalsByCurrency, entryAmount, isFixedMonthly } from '../../utils/calculations';
-import { startOfMonth, endOfMonth, startOfYear, endOfYear, today, isInRange, getISOWeek, getWeekLabel, getMonthIndex, shortMonthName, formatDate, getMonthLabel } from '../../utils/dateUtils';
+import { startOfMonth, endOfMonth, startOfYear, endOfYear, today, isInRange, getISOWeek, getWeekLabel, getMonthIndex, shortMonthName, formatDate, getMonthLabel, daysSince } from '../../utils/dateUtils';
 import { formatCurrency, formatCurrencyShort, formatHours } from '../../utils/formatCurrency';
 import { preloadRates, convertToUSD } from '../../utils/exchangeRate';
 import type { Currency } from '../../types';
@@ -243,6 +243,30 @@ export default function DashboardPage() {
     [invoices]
   );
 
+  // Outstanding AR total in USD
+  const arData = useMemo(() => {
+    let totalUSD = 0;
+    let hasUnconverted = false;
+    const items = awaitingPayment.map((inv) => {
+      const co = companyMap.get(inv.companyId);
+      const usdAmount = inv.exchangeRateToUSD != null
+        ? inv.totalAmount * inv.exchangeRateToUSD
+        : null;
+      if (usdAmount != null) {
+        totalUSD += usdAmount;
+      } else {
+        hasUnconverted = true;
+      }
+      return {
+        inv,
+        companyName: co?.name ?? 'Unknown',
+        usdAmount,
+        daysOutstanding: daysSince(inv.invoiceDate),
+      };
+    });
+    return { totalUSD, hasUnconverted, items };
+  }, [awaitingPayment, companyMap]);
+
   const unpaidNonInvoice = useMemo(() => {
     return timeEntries.filter((e) => {
       const co = companyMap.get(e.companyId);
@@ -270,7 +294,7 @@ export default function DashboardPage() {
       </p>
 
       {/* Summary cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {/* This Month */}
         <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-xl p-5 text-white shadow-lg shadow-indigo-200">
           <p className="text-xs font-medium text-indigo-200 uppercase tracking-wide mb-2">This Month</p>
@@ -343,6 +367,25 @@ export default function DashboardPage() {
             </>
           ) : (
             <p className="text-sm text-emerald-200">Loading rates...</p>
+          )}
+        </div>
+
+        {/* Outstanding AR card */}
+        <div className="bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl p-5 text-white shadow-lg shadow-amber-200">
+          <p className="text-xs font-medium text-amber-200 uppercase tracking-wide mb-2">Accounts Receivable</p>
+          {awaitingPayment.length === 0 ? (
+            <>
+              <p className="text-2xl font-bold">{formatCurrency(0, 'USD')}</p>
+              <p className="text-sm text-amber-100 mt-1">No outstanding invoices</p>
+            </>
+          ) : (
+            <>
+              <p className="text-2xl font-bold">{formatCurrency(arData.totalUSD, 'USD')}</p>
+              {arData.hasUnconverted && (
+                <p className="text-xs text-amber-200 mt-0.5">+ unconverted amounts</p>
+              )}
+              <p className="text-sm text-amber-100 mt-1">{awaitingPayment.length} invoice{awaitingPayment.length !== 1 ? 's' : ''} outstanding</p>
+            </>
           )}
         </div>
       </div>
@@ -478,6 +521,50 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+
+      {/* Outstanding AR detail */}
+      {awaitingPayment.length > 0 && (
+        <div className="bg-white border rounded-xl p-4 shadow-sm">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">Outstanding Invoices</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs text-gray-400 uppercase tracking-wide">
+                  <th className="pb-2 font-medium">Company</th>
+                  <th className="pb-2 font-medium">Invoice #</th>
+                  <th className="pb-2 font-medium text-right">Amount</th>
+                  <th className="pb-2 font-medium text-right">USD Equiv.</th>
+                  <th className="pb-2 font-medium text-right">Days Out</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {arData.items.map(({ inv, companyName, usdAmount, daysOutstanding }) => (
+                  <tr key={inv.id}>
+                    <td className="py-2 font-medium">{companyName}</td>
+                    <td className="py-2 text-gray-500">#{inv.invoiceNumber}</td>
+                    <td className="py-2 text-right tabular-nums">{formatCurrency(inv.totalAmount, inv.currency)}</td>
+                    <td className="py-2 text-right tabular-nums">
+                      {usdAmount != null ? formatCurrency(usdAmount, 'USD') : <span className="text-gray-400">--</span>}
+                    </td>
+                    <td className="py-2 text-right tabular-nums">
+                      <span className={daysOutstanding > 30 ? 'text-red-600 font-medium' : daysOutstanding > 14 ? 'text-amber-600' : 'text-gray-600'}>
+                        {daysOutstanding}d
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t font-semibold">
+                  <td className="pt-2" colSpan={3}>Total</td>
+                  <td className="pt-2 text-right tabular-nums">{formatCurrency(arData.totalUSD, 'USD')}</td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Quick entry */}
       <div className="bg-white border rounded-xl p-4 shadow-sm">
