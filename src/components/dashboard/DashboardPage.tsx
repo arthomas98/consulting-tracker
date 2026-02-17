@@ -268,11 +268,22 @@ export default function DashboardPage() {
       };
     });
 
-    // Unpaid non-invoice entries
+    // IDs already on a sent or paid invoice — those are accounted for above
+    const invoicedEntryIds = new Set(
+      invoices.filter((i) => i.status === 'sent' || i.status === 'paid').flatMap((i) => i.timeEntryIds)
+    );
+
+    // Unpaid entries: non-invoice companies (not paid) + invoice-required companies (not yet on a sent/paid invoice)
     const entryItems = timeEntries
       .filter((e) => {
         const co = companyMap.get(e.companyId);
-        return co && !co.invoiceRequired && !e.paidDate;
+        if (!co || (co && isFixedMonthly(co))) return false;
+        if (co.invoiceRequired) {
+          // Include if not on any sent/paid invoice
+          return !invoicedEntryIds.has(e.id);
+        }
+        // Non-invoice company: include if not paid
+        return !e.paidDate;
       })
       .map((e) => {
         const co = companyMap.get(e.companyId)!;
@@ -289,15 +300,16 @@ export default function DashboardPage() {
           amount,
           currency: co.currency,
           companyName: co.name,
+          invoiceRequired: co.invoiceRequired,
           usdAmount,
           daysOutstanding: daysSince(e.date),
         };
       });
 
     return { totalUSD, hasUnconverted, invoiceItems, entryItems, totalItems: invoiceItems.length + entryItems.length };
-  }, [awaitingPayment, companyMap, timeEntries, rates]);
+  }, [awaitingPayment, companyMap, timeEntries, invoices, rates]);
 
-  const unpaidNonInvoice = arData.entryItems;
+  const unpaidNonInvoice = arData.entryItems.filter((item) => !item.invoiceRequired);
 
   function markPaid(entryIds: string[]) {
     const todayStr = today();
@@ -411,10 +423,13 @@ export default function DashboardPage() {
               )}
               <div className="text-sm text-amber-100 mt-1 space-y-0.5">
                 {arData.invoiceItems.length > 0 && (
-                  <p>{arData.invoiceItems.length} invoice{arData.invoiceItems.length !== 1 ? 's' : ''}</p>
+                  <p>{arData.invoiceItems.length} sent invoice{arData.invoiceItems.length !== 1 ? 's' : ''}</p>
                 )}
-                {arData.entryItems.length > 0 && (
-                  <p>{arData.entryItems.length} unpaid entr{arData.entryItems.length !== 1 ? 'ies' : 'y'}</p>
+                {arData.entryItems.filter((i) => i.invoiceRequired).length > 0 && (
+                  <p>{arData.entryItems.filter((i) => i.invoiceRequired).length} uninvoiced entr{arData.entryItems.filter((i) => i.invoiceRequired).length !== 1 ? 'ies' : 'y'}</p>
+                )}
+                {unpaidNonInvoice.length > 0 && (
+                  <p>{unpaidNonInvoice.length} unpaid entr{unpaidNonInvoice.length !== 1 ? 'ies' : 'y'}</p>
                 )}
               </div>
             </>
@@ -585,10 +600,13 @@ export default function DashboardPage() {
                     </td>
                   </tr>
                 ))}
-                {arData.entryItems.map(({ entry, companyName, amount, currency, usdAmount, daysOutstanding }) => (
+                {arData.entryItems.map(({ entry, companyName, amount, currency, invoiceRequired, usdAmount, daysOutstanding }) => (
                   <tr key={entry.id}>
                     <td className="py-2 font-medium">{companyName}</td>
-                    <td className="py-2 text-gray-400 truncate max-w-48">{entry.description || formatDate(entry.date)}</td>
+                    <td className="py-2 text-gray-400 truncate max-w-48">
+                      {invoiceRequired && <span className="text-xs text-orange-500 mr-1">Uninvoiced</span>}
+                      {entry.description || formatDate(entry.date)}
+                    </td>
                     <td className="py-2 text-right tabular-nums">{formatCurrency(amount, currency)}</td>
                     <td className="py-2 text-right tabular-nums">
                       {usdAmount != null ? formatCurrency(usdAmount, 'USD') : <span className="text-gray-400">--</span>}
