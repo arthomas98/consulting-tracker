@@ -569,6 +569,12 @@ export default function DashboardPage() {
         )}
       </div>
 
+      {/* Quick entry */}
+      <div className="bg-white border rounded-xl p-4 shadow-sm">
+        <h3 className="text-sm font-semibold text-gray-700 mb-3">Quick Entry</h3>
+        <TimeEntryForm key={quickEntryKey} compact onDone={() => setQuickEntryKey((k) => k + 1)} />
+      </div>
+
       {/* Outstanding AR detail */}
       {arData.totalItems > 0 && (
         <div className="bg-white border rounded-xl p-4 shadow-sm">
@@ -630,12 +636,6 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
-
-      {/* Quick entry */}
-      <div className="bg-white border rounded-xl p-4 shadow-sm">
-        <h3 className="text-sm font-semibold text-gray-700 mb-3">Quick Entry</h3>
-        <TimeEntryForm key={quickEntryKey} compact onDone={() => setQuickEntryKey((k) => k + 1)} />
-      </div>
 
       {/* Action items */}
       <div className="grid gap-4 sm:grid-cols-2">
