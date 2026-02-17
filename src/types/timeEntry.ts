@@ -7,6 +7,7 @@ export interface TimeEntry {
   fixedAmount?: number;
   description: string;
   paidDate?: string;
+  paymentNote?: string;
   createdAt: string;
   updatedAt: string;
 }

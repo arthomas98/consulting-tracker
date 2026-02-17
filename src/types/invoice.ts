@@ -14,6 +14,7 @@ export interface Invoice {
   rateUsed: number;
   status: InvoiceStatus;
   paidDate?: string;
+  paymentNote?: string;
   notes?: string;
   billingType?: BillingType;
   retainerMonth?: string;

@@ -227,8 +227,9 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
   const [rateWarning, setRateWarning] = useState('');
   const [showPaidPicker, setShowPaidPicker] = useState(false);
   const [paidDateInput, setPaidDateInput] = useState(today());
+  const [paymentNoteInput, setPaymentNoteInput] = useState('');
 
-  async function updateStatus(status: Invoice['status'], paidDate?: string) {
+  async function updateStatus(status: Invoice['status'], paidDate?: string, paymentNote?: string) {
     let exchangeRateToUSD = invoice.exchangeRateToUSD;
 
     if (status === 'sent' && exchangeRateToUSD == null) {
@@ -247,7 +248,7 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
       }
     }
 
-    saveInvoice({ ...invoice, status, paidDate, exchangeRateToUSD, updatedAt: new Date().toISOString() });
+    saveInvoice({ ...invoice, status, paidDate, paymentNote: paymentNote || undefined, exchangeRateToUSD, updatedAt: new Date().toISOString() });
   }
 
   function getInvoiceData() {
@@ -327,6 +328,7 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
         <div><span className="text-gray-500">Total Amount:</span> <span className="font-semibold">{formatCurrency(invoice.totalAmount, invoice.currency)}</span></div>
         {isRetainer && invoice.retainerMonth && <div><span className="text-gray-500">Retainer Month:</span> {monthLabel}</div>}
         {invoice.paidDate && <div><span className="text-gray-500">Paid:</span> {formatDate(invoice.paidDate)}</div>}
+        {invoice.paymentNote && <div className="col-span-2"><span className="text-gray-500">Payment Note:</span> {invoice.paymentNote}</div>}
       </div>
 
       {invoice.notes && (
@@ -408,32 +410,46 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
       {invoice.status === 'sent' && (
         <div className="bg-green-50 border border-green-200 rounded-lg p-4">
           {showPaidPicker ? (
-            <div className="flex items-center gap-3">
-              <label className="text-sm font-medium text-green-800">Payment date:</label>
-              <input
-                type="date"
-                value={paidDateInput}
-                onChange={(e) => setPaidDateInput(e.target.value)}
-                className="border border-green-300 rounded-md px-3 py-1.5 text-sm"
-              />
-              <button
-                onClick={() => { updateStatus('paid', paidDateInput); setShowPaidPicker(false); }}
-                className="bg-green-600 text-white px-4 py-1.5 rounded-md text-sm font-medium hover:bg-green-700"
-              >
-                Confirm Paid
-              </button>
-              <button
-                onClick={() => setShowPaidPicker(false)}
-                className="text-sm text-gray-500 hover:text-gray-700"
-              >
-                Cancel
-              </button>
+            <div className="space-y-2">
+              <div className="flex items-center gap-3">
+                <label className="text-sm font-medium text-green-800">Payment date:</label>
+                <input
+                  type="date"
+                  value={paidDateInput}
+                  onChange={(e) => setPaidDateInput(e.target.value)}
+                  className="border border-green-300 rounded-md px-3 py-1.5 text-sm"
+                />
+              </div>
+              <div className="flex items-center gap-3">
+                <label className="text-sm font-medium text-green-800">Note (optional):</label>
+                <input
+                  type="text"
+                  value={paymentNoteInput}
+                  onChange={(e) => setPaymentNoteInput(e.target.value)}
+                  placeholder="e.g. Check #1234, Wire transfer"
+                  className="border border-green-300 rounded-md px-3 py-1.5 text-sm flex-1"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => { updateStatus('paid', paidDateInput, paymentNoteInput); setShowPaidPicker(false); setPaymentNoteInput(''); }}
+                  className="bg-green-600 text-white px-4 py-1.5 rounded-md text-sm font-medium hover:bg-green-700"
+                >
+                  Confirm Paid
+                </button>
+                <button
+                  onClick={() => { setShowPaidPicker(false); setPaymentNoteInput(''); }}
+                  className="text-sm text-gray-500 hover:text-gray-700"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           ) : (
             <div className="flex items-center justify-between">
               <span className="text-sm text-green-800">Received payment for this invoice?</span>
               <button
-                onClick={() => { setPaidDateInput(today()); setShowPaidPicker(true); }}
+                onClick={() => { setPaidDateInput(today()); setPaymentNoteInput(''); setShowPaidPicker(true); }}
                 className="bg-green-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-green-700"
               >
                 Mark as Paid

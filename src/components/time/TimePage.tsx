@@ -24,6 +24,8 @@ export default function TimePage() {
   const [weekOf, setWeekOf] = useState(today());
   const [filterCompany, setFilterCompany] = useState('');
   const [view, setView] = useState<'week' | 'list'>('list');
+  const [payingEntryId, setPayingEntryId] = useState<string | null>(null);
+  const [paymentNoteInput, setPaymentNoteInput] = useState('');
 
   const companyMap = useMemo(() => new Map(companies.map((c) => [c.id, c])), [companies]);
   const projectMap = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects]);
@@ -59,12 +61,14 @@ export default function TimePage() {
     });
   }
 
-  function markPaid(entry: TimeEntry) {
-    saveTimeEntry({ ...entry, paidDate: today(), updatedAt: new Date().toISOString() });
+  function confirmPaid(entry: TimeEntry, note: string) {
+    saveTimeEntry({ ...entry, paidDate: today(), paymentNote: note || undefined, updatedAt: new Date().toISOString() });
+    setPayingEntryId(null);
+    setPaymentNoteInput('');
   }
 
   function markUnpaid(entry: TimeEntry) {
-    saveTimeEntry({ ...entry, paidDate: undefined, updatedAt: new Date().toISOString() });
+    saveTimeEntry({ ...entry, paidDate: undefined, paymentNote: undefined, updatedAt: new Date().toISOString() });
   }
 
   function renderEntry(entry: TimeEntry, showDate?: boolean) {
@@ -72,34 +76,57 @@ export default function TimePage() {
     const project = entry.projectId ? projectMap.get(entry.projectId) : undefined;
     const status = getEntryPaymentStatus(entry, company, invoices);
     const canTogglePaid = company && !company.invoiceRequired && !invoices.find((i) => i.timeEntryIds.includes(entry.id));
+    const isPaying = payingEntryId === entry.id;
     return (
-      <div key={entry.id} className="flex items-center gap-2 px-3 py-2 bg-white rounded border hover:shadow-sm group text-sm">
-        {showDate && <span className="text-gray-400 shrink-0 w-24">{formatDate(entry.date)}</span>}
-        <span className="font-medium shrink-0 w-32 truncate">{company?.name || 'Unknown'}</span>
-        <span className="text-xs text-gray-400 shrink-0 w-24 truncate">{project?.name ?? ''}</span>
-        <span className="text-gray-600 flex-1 min-w-0 truncate">{entry.description}</span>
-        <Badge color={statusColors[status] || 'gray'}>{status}</Badge>
-        <span className="text-right shrink-0 w-14 tabular-nums">
-          {entry.hours > 0 ? `${formatHours(entry.hours)}h` : '—'}
-        </span>
-        <span className="text-right shrink-0 w-22 font-medium tabular-nums">
-          {company && isFixedMonthly(company)
-            ? '—'
-            : entry.fixedAmount != null
-              ? (company ? formatCurrency(entry.fixedAmount, company.currency) : `$${entry.fixedAmount}`)
-              : (company ? formatCurrency(entry.hours * company.hourlyRate, company.currency) : '')}
-        </span>
-        <div className="flex gap-1 shrink-0 w-36 justify-end">
-          {canTogglePaid && !entry.paidDate && (
-            <button onClick={() => markPaid(entry)} className="text-xs text-green-600 hover:text-green-800 px-1">Paid</button>
-          )}
-          {canTogglePaid && entry.paidDate && (
-            <button onClick={() => markUnpaid(entry)} className="text-xs text-orange-500 hover:text-orange-700 px-1">Unpaid</button>
-          )}
-          <button onClick={() => setEditing(entry)} className="text-xs text-blue-600 hover:text-blue-800 px-1">Edit</button>
-          <button onClick={() => duplicate(entry)} className="text-xs text-gray-500 hover:text-gray-700 px-1">Dup</button>
-          <button onClick={() => { if (confirm('Delete this entry?')) deleteTimeEntry(entry.id); }} className="text-xs text-red-500 hover:text-red-700 px-1">Del</button>
+      <div key={entry.id}>
+        <div className="flex items-center gap-2 px-3 py-2 bg-white rounded border hover:shadow-sm group text-sm">
+          {showDate && <span className="text-gray-400 shrink-0 w-24">{formatDate(entry.date)}</span>}
+          <span className="font-medium shrink-0 w-32 truncate">{company?.name || 'Unknown'}</span>
+          <span className="text-xs text-gray-400 shrink-0 w-24 truncate">{project?.name ?? ''}</span>
+          <span className="text-gray-600 flex-1 min-w-0 truncate">
+            {entry.description}
+            {entry.paymentNote && entry.paidDate && (
+              <span className="text-xs text-gray-400 ml-2" title={entry.paymentNote}>({entry.paymentNote})</span>
+            )}
+          </span>
+          <Badge color={statusColors[status] || 'gray'}>{status}</Badge>
+          <span className="text-right shrink-0 w-14 tabular-nums">
+            {entry.hours > 0 ? `${formatHours(entry.hours)}h` : '—'}
+          </span>
+          <span className="text-right shrink-0 w-22 font-medium tabular-nums">
+            {company && isFixedMonthly(company)
+              ? '—'
+              : entry.fixedAmount != null
+                ? (company ? formatCurrency(entry.fixedAmount, company.currency) : `$${entry.fixedAmount}`)
+                : (company ? formatCurrency(entry.hours * company.hourlyRate, company.currency) : '')}
+          </span>
+          <div className="flex gap-1 shrink-0 w-36 justify-end">
+            {canTogglePaid && !entry.paidDate && (
+              <button onClick={() => { setPayingEntryId(entry.id); setPaymentNoteInput(''); }} className="text-xs text-green-600 hover:text-green-800 px-1">Paid</button>
+            )}
+            {canTogglePaid && entry.paidDate && (
+              <button onClick={() => markUnpaid(entry)} className="text-xs text-orange-500 hover:text-orange-700 px-1">Unpaid</button>
+            )}
+            <button onClick={() => setEditing(entry)} className="text-xs text-blue-600 hover:text-blue-800 px-1">Edit</button>
+            <button onClick={() => duplicate(entry)} className="text-xs text-gray-500 hover:text-gray-700 px-1">Dup</button>
+            <button onClick={() => { if (confirm('Delete this entry?')) deleteTimeEntry(entry.id); }} className="text-xs text-red-500 hover:text-red-700 px-1">Del</button>
+          </div>
         </div>
+        {isPaying && (
+          <div className="flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded mt-0.5 text-sm">
+            <input
+              type="text"
+              value={paymentNoteInput}
+              onChange={(e) => setPaymentNoteInput(e.target.value)}
+              placeholder="Payment note (optional)"
+              className="border border-green-300 rounded px-2 py-1 text-sm flex-1"
+              autoFocus
+              onKeyDown={(e) => { if (e.key === 'Enter') confirmPaid(entry, paymentNoteInput); }}
+            />
+            <button onClick={() => confirmPaid(entry, paymentNoteInput)} className="text-xs bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 font-medium">Confirm</button>
+            <button onClick={() => setPayingEntryId(null)} className="text-xs text-gray-500 hover:text-gray-700">Cancel</button>
+          </div>
+        )}
       </div>
     );
   }

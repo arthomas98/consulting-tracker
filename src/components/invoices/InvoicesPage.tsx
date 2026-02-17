@@ -16,6 +16,8 @@ export default function InvoicesPage() {
   const [viewing, setViewing] = useState<Invoice | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [companyFilter, setCompanyFilter] = useState('');
+  const [payingInvoiceId, setPayingInvoiceId] = useState<string | null>(null);
+  const [paymentNoteInput, setPaymentNoteInput] = useState('');
 
   const companyMap = useMemo(() => new Map(companies.map((c) => [c.id, c])), [companies]);
 
@@ -71,24 +73,60 @@ export default function InvoicesPage() {
               {filtered.map((inv) => {
                 const company = companyMap.get(inv.companyId);
                 const aging = inv.status === 'sent' ? `${daysSince(inv.invoiceDate)}d` : '';
+                const isPaying = payingInvoiceId === inv.id;
                 return (
-                  <tr key={inv.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => setViewing(inv)}>
+                  <tr key={inv.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => { if (!isPaying) setViewing(inv); }}>
                     <td className="px-4 py-3 font-medium">{inv.invoiceNumber || '—'}</td>
                     <td className="px-4 py-3">{company?.name || 'Unknown'}</td>
                     <td className="px-4 py-3 text-gray-500">{formatDate(inv.invoiceDate)}</td>
                     <td className="px-4 py-3 text-right">{inv.billingType === 'fixed_monthly' ? '—' : formatHours(inv.totalHours)}</td>
                     <td className="px-4 py-3 text-right font-medium">{formatCurrency(inv.totalAmount, inv.currency)}</td>
-                    <td className="px-4 py-3"><Badge color={statusColor[inv.status]}>{inv.status}</Badge></td>
+                    <td className="px-4 py-3">
+                      <Badge color={statusColor[inv.status]}>{inv.status}</Badge>
+                      {inv.paymentNote && inv.status === 'paid' && (
+                        <span className="block text-xs text-gray-400 mt-0.5 truncate max-w-32" title={inv.paymentNote}>{inv.paymentNote}</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-right text-gray-500">{aging}</td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
-                        {inv.status === 'sent' && (
+                        {inv.status === 'sent' && !isPaying && (
                           <button
-                            onClick={(e) => { e.stopPropagation(); saveInvoice({ ...inv, status: 'paid', paidDate: today(), updatedAt: new Date().toISOString() }); }}
+                            onClick={(e) => { e.stopPropagation(); setPayingInvoiceId(inv.id); setPaymentNoteInput(''); }}
                             className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded hover:bg-green-200 font-medium"
                           >
                             Mark Paid
                           </button>
+                        )}
+                        {isPaying && (
+                          <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="text"
+                              value={paymentNoteInput}
+                              onChange={(e) => setPaymentNoteInput(e.target.value)}
+                              placeholder="Note (optional)"
+                              className="border rounded px-2 py-0.5 text-xs w-32"
+                              autoFocus
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  saveInvoice({ ...inv, status: 'paid', paidDate: today(), paymentNote: paymentNoteInput || undefined, updatedAt: new Date().toISOString() });
+                                  setPayingInvoiceId(null);
+                                }
+                              }}
+                            />
+                            <button
+                              onClick={() => { saveInvoice({ ...inv, status: 'paid', paidDate: today(), paymentNote: paymentNoteInput || undefined, updatedAt: new Date().toISOString() }); setPayingInvoiceId(null); }}
+                              className="text-xs bg-green-600 text-white px-2 py-0.5 rounded hover:bg-green-700"
+                            >
+                              OK
+                            </button>
+                            <button
+                              onClick={() => setPayingInvoiceId(null)}
+                              className="text-xs text-gray-400 hover:text-gray-600"
+                            >
+                              X
+                            </button>
+                          </div>
                         )}
                         {inv.status === 'draft' && (
                           <button
