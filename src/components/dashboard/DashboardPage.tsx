@@ -247,7 +247,9 @@ export default function DashboardPage() {
   const arData = useMemo(() => {
     let totalUSD = 0;
     let hasUnconverted = false;
-    const items = awaitingPayment.map((inv) => {
+
+    // Sent invoices
+    const invoiceItems = awaitingPayment.map((inv) => {
       const co = companyMap.get(inv.companyId);
       const usdAmount = inv.exchangeRateToUSD != null
         ? inv.totalAmount * inv.exchangeRateToUSD
@@ -258,21 +260,44 @@ export default function DashboardPage() {
         hasUnconverted = true;
       }
       return {
+        type: 'invoice' as const,
         inv,
         companyName: co?.name ?? 'Unknown',
         usdAmount,
         daysOutstanding: daysSince(inv.invoiceDate),
       };
     });
-    return { totalUSD, hasUnconverted, items };
-  }, [awaitingPayment, companyMap]);
 
-  const unpaidNonInvoice = useMemo(() => {
-    return timeEntries.filter((e) => {
-      const co = companyMap.get(e.companyId);
-      return co && !co.invoiceRequired && !e.paidDate;
-    });
-  }, [timeEntries, companyMap]);
+    // Unpaid non-invoice entries
+    const entryItems = timeEntries
+      .filter((e) => {
+        const co = companyMap.get(e.companyId);
+        return co && !co.invoiceRequired && !e.paidDate;
+      })
+      .map((e) => {
+        const co = companyMap.get(e.companyId)!;
+        const amount = entryAmount(e, co.hourlyRate);
+        const usdAmount = convertToUSD(amount, co.currency, rates[co.currency]);
+        if (usdAmount != null) {
+          totalUSD += usdAmount;
+        } else {
+          hasUnconverted = true;
+        }
+        return {
+          type: 'entry' as const,
+          entry: e,
+          amount,
+          currency: co.currency,
+          companyName: co.name,
+          usdAmount,
+          daysOutstanding: daysSince(e.date),
+        };
+      });
+
+    return { totalUSD, hasUnconverted, invoiceItems, entryItems, totalItems: invoiceItems.length + entryItems.length };
+  }, [awaitingPayment, companyMap, timeEntries, rates]);
+
+  const unpaidNonInvoice = arData.entryItems;
 
   function markPaid(entryIds: string[]) {
     const todayStr = today();
@@ -373,10 +398,10 @@ export default function DashboardPage() {
         {/* Outstanding AR card */}
         <div className="bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl p-5 text-white shadow-lg shadow-amber-200">
           <p className="text-xs font-medium text-amber-200 uppercase tracking-wide mb-2">Accounts Receivable</p>
-          {awaitingPayment.length === 0 ? (
+          {arData.totalItems === 0 ? (
             <>
               <p className="text-2xl font-bold">{formatCurrency(0, 'USD')}</p>
-              <p className="text-sm text-amber-100 mt-1">No outstanding invoices</p>
+              <p className="text-sm text-amber-100 mt-1">Nothing outstanding</p>
             </>
           ) : (
             <>
@@ -384,7 +409,14 @@ export default function DashboardPage() {
               {arData.hasUnconverted && (
                 <p className="text-xs text-amber-200 mt-0.5">+ unconverted amounts</p>
               )}
-              <p className="text-sm text-amber-100 mt-1">{awaitingPayment.length} invoice{awaitingPayment.length !== 1 ? 's' : ''} outstanding</p>
+              <div className="text-sm text-amber-100 mt-1 space-y-0.5">
+                {arData.invoiceItems.length > 0 && (
+                  <p>{arData.invoiceItems.length} invoice{arData.invoiceItems.length !== 1 ? 's' : ''}</p>
+                )}
+                {arData.entryItems.length > 0 && (
+                  <p>{arData.entryItems.length} unpaid entr{arData.entryItems.length !== 1 ? 'ies' : 'y'}</p>
+                )}
+              </div>
             </>
           )}
         </div>
@@ -523,26 +555,41 @@ export default function DashboardPage() {
       </div>
 
       {/* Outstanding AR detail */}
-      {awaitingPayment.length > 0 && (
+      {arData.totalItems > 0 && (
         <div className="bg-white border rounded-xl p-4 shadow-sm">
-          <h3 className="text-sm font-semibold text-gray-700 mb-3">Outstanding Invoices</h3>
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">Accounts Receivable</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs text-gray-400 uppercase tracking-wide">
                   <th className="pb-2 font-medium">Company</th>
-                  <th className="pb-2 font-medium">Invoice #</th>
+                  <th className="pb-2 font-medium">Reference</th>
                   <th className="pb-2 font-medium text-right">Amount</th>
                   <th className="pb-2 font-medium text-right">USD Equiv.</th>
                   <th className="pb-2 font-medium text-right">Days Out</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {arData.items.map(({ inv, companyName, usdAmount, daysOutstanding }) => (
+                {arData.invoiceItems.map(({ inv, companyName, usdAmount, daysOutstanding }) => (
                   <tr key={inv.id}>
                     <td className="py-2 font-medium">{companyName}</td>
-                    <td className="py-2 text-gray-500">#{inv.invoiceNumber}</td>
+                    <td className="py-2 text-gray-500">Invoice #{inv.invoiceNumber}</td>
                     <td className="py-2 text-right tabular-nums">{formatCurrency(inv.totalAmount, inv.currency)}</td>
+                    <td className="py-2 text-right tabular-nums">
+                      {usdAmount != null ? formatCurrency(usdAmount, 'USD') : <span className="text-gray-400">--</span>}
+                    </td>
+                    <td className="py-2 text-right tabular-nums">
+                      <span className={daysOutstanding > 30 ? 'text-red-600 font-medium' : daysOutstanding > 14 ? 'text-amber-600' : 'text-gray-600'}>
+                        {daysOutstanding}d
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+                {arData.entryItems.map(({ entry, companyName, amount, currency, usdAmount, daysOutstanding }) => (
+                  <tr key={entry.id}>
+                    <td className="py-2 font-medium">{companyName}</td>
+                    <td className="py-2 text-gray-400 truncate max-w-48">{entry.description || formatDate(entry.date)}</td>
+                    <td className="py-2 text-right tabular-nums">{formatCurrency(amount, currency)}</td>
                     <td className="py-2 text-right tabular-nums">
                       {usdAmount != null ? formatCurrency(usdAmount, 'USD') : <span className="text-gray-400">--</span>}
                     </td>
@@ -626,31 +673,28 @@ export default function DashboardPage() {
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-gray-500 font-medium">Unpaid entries (no invoice)</span>
                     <button
-                      onClick={() => markPaid(unpaidNonInvoice.map((e) => e.id))}
+                      onClick={() => markPaid(unpaidNonInvoice.map((item) => item.entry.id))}
                       className="text-xs text-green-600 hover:text-green-800"
                     >
                       Mark all paid
                     </button>
                   </div>
-                  {unpaidNonInvoice.map((e) => {
-                    const co = companyMap.get(e.companyId);
-                    return (
-                      <div key={e.id} className="flex items-center gap-2 text-sm">
-                        <span className="text-gray-400 shrink-0 w-20 text-xs">{formatDate(e.date)}</span>
-                        <span className="font-medium shrink-0">{co?.name}</span>
-                        <span className="text-gray-500 flex-1 min-w-0 truncate">{e.description}</span>
-                        <span className="font-medium shrink-0 tabular-nums">
-                          {co ? formatCurrency(entryAmount(e, co.hourlyRate), co.currency) : ''}
-                        </span>
-                        <button
-                          onClick={() => markPaid([e.id])}
-                          className="text-xs text-green-600 hover:text-green-800 shrink-0"
-                        >
-                          Paid
-                        </button>
-                      </div>
-                    );
-                  })}
+                  {unpaidNonInvoice.map(({ entry, companyName, amount, currency }) => (
+                    <div key={entry.id} className="flex items-center gap-2 text-sm">
+                      <span className="text-gray-400 shrink-0 w-20 text-xs">{formatDate(entry.date)}</span>
+                      <span className="font-medium shrink-0">{companyName}</span>
+                      <span className="text-gray-500 flex-1 min-w-0 truncate">{entry.description}</span>
+                      <span className="font-medium shrink-0 tabular-nums">
+                        {formatCurrency(amount, currency)}
+                      </span>
+                      <button
+                        onClick={() => markPaid([entry.id])}
+                        className="text-xs text-green-600 hover:text-green-800 shrink-0"
+                      >
+                        Paid
+                      </button>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
