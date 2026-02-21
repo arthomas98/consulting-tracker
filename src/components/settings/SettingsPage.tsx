@@ -127,14 +127,16 @@ export default function SettingsPage() {
     setMessage({ type: 'success', text: 'Disconnected from Google Sheets.' });
   }
 
-  const isBusy = syncStatus.state === 'pushing' || syncStatus.state === 'pulling';
-  const statusLabel = syncStatus.isConnected
-    ? syncStatus.lastPushAt
-      ? `Connected \u2014 Last synced: ${syncStatus.lastPushAt.toLocaleTimeString()}`
-      : 'Connected'
-    : syncStatus.lastError
-      ? `Error: ${syncStatus.lastError}`
-      : 'Not connected';
+  const isBusy = syncStatus.state === 'pushing' || syncStatus.state === 'pulling' || syncStatus.state === 'conflict';
+  const statusLabel = syncStatus.state === 'conflict'
+    ? 'Merging changes...'
+    : syncStatus.isConnected
+      ? syncStatus.lastPushAt
+        ? `Connected \u2014 Last synced: ${syncStatus.lastPushAt.toLocaleTimeString()}`
+        : 'Connected'
+      : syncStatus.lastError
+        ? `Error: ${syncStatus.lastError}`
+        : 'Not connected';
 
   return (
     <div>
@@ -265,7 +267,7 @@ export default function SettingsPage() {
                     disabled={isBusy}
                     className="bg-green-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {syncStatus.state === 'pushing' ? 'Pushing...' : 'Sync Now'}
+                    {syncStatus.state === 'conflict' ? 'Merging...' : syncStatus.state === 'pushing' ? 'Pushing...' : 'Sync Now'}
                   </button>
                   <button
                     onClick={handlePull}

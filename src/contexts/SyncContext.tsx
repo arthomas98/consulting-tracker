@@ -6,10 +6,11 @@ import { initGapi, initGis, requestAccessToken, revokeToken, hasValidToken } fro
 import {
   syncToSheets, pullFromSheets, findSpreadsheet,
   getSpreadsheetId, clearSpreadsheetId, getSpreadsheetUrl,
+  checkForConflict, mergeData, clearLastSyncTime,
 } from '../services/syncManager';
 
 export interface SyncStatus {
-  state: 'idle' | 'pushing' | 'pulling' | 'error';
+  state: 'idle' | 'pushing' | 'pulling' | 'conflict' | 'error';
   isConnected: boolean;
   lastPushAt: Date | null;
   lastError: string | null;
@@ -60,6 +61,8 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     setSyncStatus((s) => ({ ...s, state: 'pushing', lastError: null }));
 
     try {
+      const spreadsheetId = getSpreadsheetId();
+      if (!spreadsheetId) return;
 
       const { companies, projects, timeEntries, invoices, profile } = storageRef.current;
 
@@ -72,7 +75,25 @@ export function SyncProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      await syncToSheets({ companies, projects, timeEntries, invoices, profile });
+      const localData = { companies, projects, timeEntries, invoices, profile };
+
+      // Check for conflict before pushing
+      const { hasConflict, remoteData } = await checkForConflict(spreadsheetId);
+
+      if (hasConflict && remoteData) {
+        console.log('[Sync] Conflict detected — merging...');
+        if (mountedRef.current) {
+          setSyncStatus((s) => ({ ...s, state: 'conflict' }));
+        }
+        const merged = mergeData(localData, remoteData);
+        // Save merged data locally first (safe even if push fails)
+        writeAll(merged);
+        storageRef.current.refresh();
+        // Push merged data to remote
+        await syncToSheets(merged);
+      } else {
+        await syncToSheets(localData);
+      }
 
       if (mountedRef.current) {
         const now = new Date();
@@ -198,6 +219,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     revokeToken();
     clearSpreadsheetId();
+    clearLastSyncTime();
     setSyncStatus({ state: 'idle', isConnected: false, lastPushAt: null, lastError: null });
     setSpreadsheetUrl(null);
   }, []);
