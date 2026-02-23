@@ -6,6 +6,9 @@ let tokenClient: google.accounts.oauth2.TokenClient | null = null;
 let gapiInitialized = false;
 let gisInitialized = false;
 
+// Track token expiration (Google tokens expire after ~1 hour)
+let tokenExpiresAt: number | null = null;
+
 export interface AuthState {
   isSignedIn: boolean;
   accessToken: string | null;
@@ -69,6 +72,10 @@ export function requestAccessToken(): Promise<string> {
           if (response.error) {
             pendingReject?.(new Error(response.error));
           } else {
+            // Track expiration (expires_in is seconds; subtract 60s buffer)
+            if (response.expires_in) {
+              tokenExpiresAt = Date.now() + (Number(response.expires_in) - 60) * 1000;
+            }
             pendingResolve?.(response.access_token);
           }
           cleanup();
@@ -95,9 +102,13 @@ export function revokeToken(): void {
     google.accounts.oauth2.revoke(token.access_token);
     gapi.client.setToken(null);
   }
+  tokenExpiresAt = null;
 }
 
 export function hasValidToken(): boolean {
   const token = gapi.client.getToken();
-  return !!token?.access_token;
+  if (!token?.access_token) return false;
+  // Check if token has expired
+  if (tokenExpiresAt && Date.now() >= tokenExpiresAt) return false;
+  return true;
 }

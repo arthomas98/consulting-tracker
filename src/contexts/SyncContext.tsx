@@ -29,6 +29,29 @@ interface SyncContextValue {
 const SyncContext = createContext<SyncContextValue | null>(null);
 
 const DEBOUNCE_MS = 2000;
+const TOKEN_CHECK_MS = 30000; // Check token expiration every 30 seconds
+
+// Helper to detect auth errors from GAPI responses
+function isAuthError(err: unknown): boolean {
+  if (err instanceof Error) {
+    const msg = err.message.toLowerCase();
+    return msg.includes('401') || msg.includes('auth') || msg.includes('invalid credentials') || msg.includes('login required');
+  }
+  if (typeof err === 'object' && err !== null) {
+    const e = err as { status?: number; result?: { error?: { code?: number } } };
+    if (e.status === 401 || e.result?.error?.code === 401) return true;
+  }
+  return false;
+}
+
+function getErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === 'object' && err !== null) {
+    const e = err as { result?: { error?: { message?: string } } };
+    if (e.result?.error?.message) return e.result.error.message;
+  }
+  return 'Unknown error';
+}
 
 export function SyncProvider({ children }: { children: ReactNode }) {
   const storage = useStorage();
@@ -55,7 +78,19 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const doPush = useCallback(async () => {
     if (pushingRef.current) return;
     if (!getSpreadsheetId()) return;
-    if (!hasValidToken()) return; // No token — skip silently, user must connect first
+
+    if (!hasValidToken()) {
+      // Token expired — flag it once so the UI shows a warning
+      if (mountedRef.current) {
+        setSyncStatus((s) => {
+          if (s.isConnected) {
+            return { ...s, state: 'error', isConnected: false, lastError: 'Session expired. Reconnect to resume syncing.' };
+          }
+          return s;
+        });
+      }
+      return;
+    }
 
     pushingRef.current = true;
     setSyncStatus((s) => ({ ...s, state: 'pushing', lastError: null }));
@@ -97,15 +132,15 @@ export function SyncProvider({ children }: { children: ReactNode }) {
 
       if (mountedRef.current) {
         const now = new Date();
-        setSyncStatus((s) => ({ ...s, state: 'idle', lastPushAt: now, isConnected: true }));
+        setSyncStatus((s) => ({ ...s, state: 'idle', lastPushAt: now, isConnected: true, lastError: null }));
         setSpreadsheetUrl(getSpreadsheetUrl());
       }
     } catch (err) {
       if (mountedRef.current) {
-        const msg = err instanceof Error ? err.message : 'Push failed';
-        if (msg.includes('401') || msg.toLowerCase().includes('auth')) {
-          setSyncStatus((s) => ({ ...s, state: 'error', lastError: 'Auth expired. Reconnect in Settings.', isConnected: false }));
+        if (isAuthError(err)) {
+          setSyncStatus((s) => ({ ...s, state: 'error', lastError: 'Session expired. Reconnect to resume syncing.', isConnected: false }));
         } else {
+          const msg = getErrorMessage(err);
           setSyncStatus((s) => ({ ...s, state: 'error', lastError: msg }));
         }
       }
@@ -123,9 +158,22 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     }, DEBOUNCE_MS);
   }, [doPush]);
 
-  // --- Force push (immediate) ---
+  // --- Force push (immediate, re-authenticates if needed) ---
   const forcePush = useCallback(async () => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    // Re-authenticate if token is expired (user clicked Sync Now)
+    if (!hasValidToken() && getSpreadsheetId()) {
+      try {
+        setSyncStatus((s) => ({ ...s, state: 'pushing', lastError: null }));
+        await requestAccessToken();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Authentication failed';
+        setSyncStatus((s) => ({ ...s, state: 'error', lastError: msg }));
+        return;
+      }
+    }
+
     await doPush();
   }, [doPush]);
 
@@ -143,28 +191,26 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       if (data && mountedRef.current) {
         writeAll(data);
         storageRef.current.refresh();
-        setSyncStatus((s) => ({ ...s, state: 'idle', isConnected: true }));
+        setSyncStatus((s) => ({ ...s, state: 'idle', isConnected: true, lastError: null }));
       }
     } catch (err) {
       if (mountedRef.current) {
-        const msg = err instanceof Error ? err.message : 'Pull failed';
-        setSyncStatus((s) => ({ ...s, state: 'error', lastError: msg }));
+        if (isAuthError(err)) {
+          setSyncStatus((s) => ({ ...s, state: 'error', lastError: 'Session expired. Reconnect to resume syncing.', isConnected: false }));
+        } else {
+          const msg = getErrorMessage(err);
+          setSyncStatus((s) => ({ ...s, state: 'error', lastError: msg }));
+        }
       }
     }
   }, []);
 
   // --- Connect (OAuth + first sync) ---
-  // GAPI/GIS are eagerly initialized on mount. If init somehow hasn't
-  // finished, we init here too, but the calls return immediately if already done.
   const connect = useCallback(async () => {
     setSyncStatus((s) => ({ ...s, state: 'pushing', lastError: null }));
     try {
-      // These are no-ops if already initialized on mount
       await initGapi();
       await initGis();
-      // Safari requires the popup to open with minimal delay after user gesture.
-      // Because initGapi/initGis are already done (eager init), requestAccessToken
-      // fires synchronously from the click handler's microtask queue.
       await requestAccessToken();
       console.log('[Sync] Auth complete, token valid:', hasValidToken());
 
@@ -231,8 +277,24 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('ct:data-changed', handler);
   }, [triggerPush]);
 
+  // --- Periodic token expiration check ---
+  // Detects when the Google token expires while the user is idle,
+  // so the UI updates proactively instead of waiting for a failed push.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (getSpreadsheetId() && !hasValidToken()) {
+        setSyncStatus((s) => {
+          if (s.isConnected) {
+            return { ...s, state: 'error', isConnected: false, lastError: 'Session expired. Reconnect to resume syncing.' };
+          }
+          return s;
+        });
+      }
+    }, TOKEN_CHECK_MS);
+    return () => clearInterval(interval);
+  }, []);
+
   // --- Startup: eagerly init GAPI/GIS so they're ready when user clicks Connect ---
-  // This avoids async delays before the OAuth popup, which Safari blocks.
   useEffect(() => {
     let cancelled = false;
 

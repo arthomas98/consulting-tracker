@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { useStorage } from '../../contexts/StorageContext';
 import { useSync } from '../../contexts/SyncContext';
+import { getSpreadsheetId } from '../../services/syncManager';
 import type { BusinessProfile } from '../../utils/storage';
 
 const STORAGE_KEYS = {
@@ -128,14 +129,19 @@ export default function SettingsPage() {
   }
 
   const isBusy = syncStatus.state === 'pushing' || syncStatus.state === 'pulling' || syncStatus.state === 'conflict';
+  // Show sync controls if we have a spreadsheet (even when token expired)
+  const hasSheet = !!getSpreadsheetId();
+  const showSyncControls = syncStatus.isConnected || hasSheet;
+  const isSessionExpired = hasSheet && !syncStatus.isConnected && syncStatus.state === 'error';
+
   const statusLabel = syncStatus.state === 'conflict'
     ? 'Merging changes...'
-    : syncStatus.isConnected
-      ? syncStatus.lastPushAt
-        ? `Connected \u2014 Last synced: ${syncStatus.lastPushAt.toLocaleTimeString()}`
-        : 'Connected'
-      : syncStatus.lastError
-        ? `Error: ${syncStatus.lastError}`
+    : syncStatus.lastError
+      ? syncStatus.lastError
+      : syncStatus.isConnected
+        ? syncStatus.lastPushAt
+          ? `Connected \u2014 Last synced: ${syncStatus.lastPushAt.toLocaleTimeString()}`
+          : 'Connected'
         : 'Not connected';
 
   return (
@@ -260,14 +266,14 @@ export default function SettingsPage() {
             </p>
 
             <div className="flex items-center gap-3">
-              {syncStatus.isConnected ? (
+              {showSyncControls ? (
                 <>
                   <button
-                    onClick={handleSyncNow}
+                    onClick={isSessionExpired ? handleConnect : handleSyncNow}
                     disabled={isBusy}
                     className="bg-green-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {syncStatus.state === 'conflict' ? 'Merging...' : syncStatus.state === 'pushing' ? 'Pushing...' : 'Sync Now'}
+                    {syncStatus.state === 'conflict' ? 'Merging...' : syncStatus.state === 'pushing' ? 'Pushing...' : isSessionExpired ? 'Reconnect & Sync' : 'Sync Now'}
                   </button>
                   <button
                     onClick={handlePull}
