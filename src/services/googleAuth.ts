@@ -1,5 +1,5 @@
 const CLIENT_ID = '140904375032-lbfq1ro3rptbjfc231mkgbjng0b5fmet.apps.googleusercontent.com';
-const SCOPES = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file';
+const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 const DISCOVERY_DOC = 'https://sheets.googleapis.com/$discovery/rest?version=v4';
 
 let tokenClient: google.accounts.oauth2.TokenClient | null = null;
