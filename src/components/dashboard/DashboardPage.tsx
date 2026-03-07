@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useStorage } from '../../contexts/StorageContext';
 import { totalsByCurrency, entryAmount, isFixedMonthly } from '../../utils/calculations';
 import { startOfMonth, endOfMonth, startOfYear, endOfYear, today, isInRange, getISOWeek, getWeekLabel, getMonthIndex, shortMonthName, formatDate, getMonthLabel, daysSince } from '../../utils/dateUtils';
@@ -7,10 +7,61 @@ import { preloadRates, convertToUSD } from '../../utils/exchangeRate';
 import type { Currency } from '../../types';
 import { Link } from 'react-router-dom';
 import TimeEntryForm from '../time/TimeEntryForm';
+import Modal from '../shared/Modal';
+
+const CHANGELOG: { version: string; date: string; changes: string[] }[] = [
+  {
+    version: '1.3',
+    date: '2026-03-06',
+    changes: [
+      'Fix duplicate company bug caused by multi-device sync',
+      'Improve sync merge to auto-deduplicate companies and projects by name',
+      'Fix edit form not showing company for entries linked to inactive duplicates',
+      'Add version changelog',
+    ],
+  },
+  {
+    version: '1.2',
+    date: '2026-02-15',
+    changes: [
+      'Add sync conflict detection and auto-merge for multi-device support',
+      'Fix Google Sheets sync failing silently after token expiration',
+      'Use drive.file scope only for OAuth (narrower permissions)',
+      'Include uninvoiced and unpaid entries in Accounts Receivable',
+      'Move Quick Entry above Accounts Receivable on dashboard',
+    ],
+  },
+  {
+    version: '1.1',
+    date: '2026-01-20',
+    changes: [
+      'Add payment notes on invoices and time entries',
+      'Export invoices as Word Document (.docx)',
+      'Improve Mark as Paid UX',
+      'Invoice formatting overhaul',
+      'Add Outstanding Accounts Receivable dashboard widget',
+      'Add exchange rates and unified USD dashboard display',
+      'Add flat fee / retainer billing type',
+      'Add GBP currency support',
+    ],
+  },
+  {
+    version: '1.0',
+    date: '2025-12-01',
+    changes: [
+      'Initial release',
+      'Time tracking, invoicing, and payment management',
+      'Google Sheets backup sync',
+      'Getting Started guide',
+      'Security fixes (XSS, CSV injection)',
+    ],
+  },
+];
 
 export default function DashboardPage() {
   const { companies, timeEntries, invoices, saveTimeEntry } = useStorage();
   const [quickEntryKey, setQuickEntryKey] = useState(0);
+  const [showChangelog, setShowChangelog] = useState(false);
   const [chartOpen, setChartOpen] = useState(false);
   const [chartMode, setChartMode] = useState<'week' | 'month'>('month');
   const [rates, setRates] = useState<Record<Currency, number | null>>({ USD: 1, EUR: null, GBP: null });
@@ -311,6 +362,43 @@ export default function DashboardPage() {
 
   const unpaidNonInvoice = arData.entryItems.filter((item) => !item.invoiceRequired);
 
+  // Group AR items by company for the AR table
+  const arByCompany = useMemo(() => {
+    type ARItem = { key: string; ref: string; amount: string; usdAmount: number | null; daysOutstanding: number; isUninvoiced?: boolean };
+    const groups = new Map<string, { companyName: string; items: ARItem[]; subtotalUSD: number }>();
+
+    for (const item of arData.invoiceItems) {
+      const group = groups.get(item.inv.companyId) || { companyName: item.companyName, items: [], subtotalUSD: 0 };
+      group.items.push({
+        key: item.inv.id,
+        ref: `Invoice #${item.inv.invoiceNumber}`,
+        amount: formatCurrency(item.inv.totalAmount, item.inv.currency),
+        usdAmount: item.usdAmount,
+        daysOutstanding: item.daysOutstanding,
+      });
+      if (item.usdAmount != null) group.subtotalUSD += item.usdAmount;
+      groups.set(item.inv.companyId, group);
+    }
+
+    for (const item of arData.entryItems) {
+      const group = groups.get(item.entry.companyId) || { companyName: item.companyName, items: [], subtotalUSD: 0 };
+      group.items.push({
+        key: item.entry.id,
+        ref: item.entry.description || formatDate(item.entry.date),
+        amount: formatCurrency(item.amount, item.currency),
+        usdAmount: item.usdAmount,
+        daysOutstanding: item.daysOutstanding,
+        isUninvoiced: item.invoiceRequired,
+      });
+      if (item.usdAmount != null) group.subtotalUSD += item.usdAmount;
+      groups.set(item.entry.companyId, group);
+    }
+
+    return Array.from(groups.entries())
+      .map(([companyId, group]) => ({ companyId, ...group }))
+      .sort((a, b) => b.subtotalUSD - a.subtotalUSD);
+  }, [arData]);
+
   function markPaid(entryIds: string[]) {
     const todayStr = today();
     for (const entry of timeEntries) {
@@ -324,7 +412,7 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">Dashboard</h2>
-        <span className="text-xs text-gray-400">v1.2</span>
+        <button onClick={() => setShowChangelog(true)} className="text-xs text-gray-400 hover:text-blue-600 transition-colors">v1.3</button>
       </div>
       <p className="text-sm text-gray-500 -mt-4">
         New here? Check out the <Link to="/getting-started" className="text-blue-600 hover:text-blue-800 font-medium">Getting Started</Link> guide.
@@ -583,51 +671,52 @@ export default function DashboardPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs text-gray-400 uppercase tracking-wide">
-                  <th className="pb-2 font-medium">Company</th>
                   <th className="pb-2 font-medium">Reference</th>
                   <th className="pb-2 font-medium text-right">Amount</th>
                   <th className="pb-2 font-medium text-right">USD Equiv.</th>
                   <th className="pb-2 font-medium text-right">Days Out</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
-                {arData.invoiceItems.map(({ inv, companyName, usdAmount, daysOutstanding }) => (
-                  <tr key={inv.id}>
-                    <td className="py-2 font-medium">{companyName}</td>
-                    <td className="py-2 text-gray-500">Invoice #{inv.invoiceNumber}</td>
-                    <td className="py-2 text-right tabular-nums">{formatCurrency(inv.totalAmount, inv.currency)}</td>
-                    <td className="py-2 text-right tabular-nums">
-                      {usdAmount != null ? formatCurrency(usdAmount, 'USD') : <span className="text-gray-400">--</span>}
-                    </td>
-                    <td className="py-2 text-right tabular-nums">
-                      <span className={daysOutstanding > 30 ? 'text-red-600 font-medium' : daysOutstanding > 14 ? 'text-amber-600' : 'text-gray-600'}>
-                        {daysOutstanding}d
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-                {arData.entryItems.map(({ entry, companyName, amount, currency, invoiceRequired, usdAmount, daysOutstanding }) => (
-                  <tr key={entry.id}>
-                    <td className="py-2 font-medium">{companyName}</td>
-                    <td className="py-2 text-gray-400 truncate max-w-48">
-                      {invoiceRequired && <span className="text-xs text-orange-500 mr-1">Uninvoiced</span>}
-                      {entry.description || formatDate(entry.date)}
-                    </td>
-                    <td className="py-2 text-right tabular-nums">{formatCurrency(amount, currency)}</td>
-                    <td className="py-2 text-right tabular-nums">
-                      {usdAmount != null ? formatCurrency(usdAmount, 'USD') : <span className="text-gray-400">--</span>}
-                    </td>
-                    <td className="py-2 text-right tabular-nums">
-                      <span className={daysOutstanding > 30 ? 'text-red-600 font-medium' : daysOutstanding > 14 ? 'text-amber-600' : 'text-gray-600'}>
-                        {daysOutstanding}d
-                      </span>
-                    </td>
-                  </tr>
+              <tbody>
+                {arByCompany.map((group) => (
+                  <Fragment key={group.companyId}>
+                    <tr className="border-t border-gray-200">
+                      <td colSpan={4} className="pt-3 pb-1 font-semibold text-gray-900">{group.companyName}</td>
+                    </tr>
+                    {group.items.map((item) => (
+                      <tr key={item.key} className="border-t border-gray-50">
+                        <td className="py-1.5 pl-4 text-gray-500 truncate max-w-64">
+                          {item.isUninvoiced && <span className="text-xs text-orange-500 mr-1">Uninvoiced</span>}
+                          {item.ref}
+                        </td>
+                        <td className="py-1.5 text-right tabular-nums">{item.amount}</td>
+                        <td className="py-1.5 text-right tabular-nums">
+                          {item.usdAmount != null ? formatCurrency(item.usdAmount, 'USD') : <span className="text-gray-400">--</span>}
+                        </td>
+                        <td className="py-1.5 text-right tabular-nums">
+                          <span className={item.daysOutstanding > 30 ? 'text-red-600 font-medium' : item.daysOutstanding > 14 ? 'text-amber-600' : 'text-gray-600'}>
+                            {item.daysOutstanding}d
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                    {group.items.length > 1 && (
+                      <tr className="border-t border-gray-100">
+                        <td className="py-1.5 pl-4 text-gray-500 text-xs font-medium">Subtotal</td>
+                        <td></td>
+                        <td className="py-1.5 text-right tabular-nums font-medium text-gray-700">
+                          {formatCurrency(group.subtotalUSD, 'USD')}
+                        </td>
+                        <td></td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
               </tbody>
               <tfoot>
-                <tr className="border-t font-semibold">
-                  <td className="pt-2" colSpan={3}>Total</td>
+                <tr className="border-t-2 border-gray-300 font-semibold">
+                  <td className="pt-2">Total</td>
+                  <td></td>
                   <td className="pt-2 text-right tabular-nums">{formatCurrency(arData.totalUSD, 'USD')}</td>
                   <td></td>
                 </tr>
@@ -719,6 +808,27 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+
+      <Modal open={showChangelog} onClose={() => setShowChangelog(false)} title="What's New">
+        <div className="space-y-6">
+          {CHANGELOG.map((release) => (
+            <div key={release.version}>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="font-semibold text-gray-900">v{release.version}</span>
+                <span className="text-xs text-gray-400">{release.date}</span>
+              </div>
+              <ul className="space-y-1 text-sm text-gray-600">
+                {release.changes.map((change, i) => (
+                  <li key={i} className="flex gap-2">
+                    <span className="text-gray-300 shrink-0">&bull;</span>
+                    <span>{change}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      </Modal>
     </div>
   );
 }

@@ -15,6 +15,10 @@ type EntryMode = 'hours' | 'amount';
 export default function TimeEntryForm({ initial, onDone, compact }: TimeEntryFormProps) {
   const { companies, projects, saveTimeEntry } = useStorage();
   const activeCompanies = companies.filter((c) => c.isActive);
+  const initialCompany = initial ? companies.find((c) => c.id === initial.companyId) : undefined;
+  const dropdownCompanies = initialCompany && !initialCompany.isActive
+    ? [initialCompany, ...activeCompanies]
+    : activeCompanies;
 
   const [companyId, setCompanyId] = useState(initial?.companyId || activeCompanies[0]?.id || '');
   const [projectId, setProjectId] = useState(initial?.projectId || '');
@@ -106,7 +110,7 @@ export default function TimeEntryForm({ initial, onDone, compact }: TimeEntryFor
       <form onSubmit={handleSubmit} className="flex flex-wrap gap-2 items-end">
         <select value={companyId} onChange={(e) => { setCompanyId(e.target.value); setProjectId(''); }} className="border rounded-md px-2 py-1.5 text-sm">
           <option value="">Company</option>
-          {activeCompanies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          {dropdownCompanies.map((c) => <option key={c.id} value={c.id}>{c.name}{!c.isActive ? ' (inactive)' : ''}</option>)}
         </select>
         {companyProjects.length > 0 && (
           <select value={projectId} onChange={(e) => setProjectId(e.target.value)} className="border rounded-md px-2 py-1.5 text-sm">
@@ -175,7 +179,7 @@ export default function TimeEntryForm({ initial, onDone, compact }: TimeEntryFor
         <label className="block text-sm font-medium text-gray-700 mb-1">Company *</label>
         <select value={companyId} onChange={(e) => { setCompanyId(e.target.value); setProjectId(''); }} className="w-full border rounded-md px-3 py-2 text-sm">
           <option value="">Select company...</option>
-          {activeCompanies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          {dropdownCompanies.map((c) => <option key={c.id} value={c.id}>{c.name}{!c.isActive ? ' (inactive)' : ''}</option>)}
         </select>
       </div>
       {companyProjects.length > 0 && (

@@ -138,14 +138,88 @@ function mergeArray<T extends { id: string; updatedAt: string }>(local: T[], rem
   return Array.from(map.values());
 }
 
-export function mergeData(local: SyncData, remote: SyncData): SyncData {
+// Deduplicate companies with the same name but different IDs (from multi-device creation).
+// Keeps the newer record (by updatedAt) and remaps all references from the duplicate ID.
+function deduplicateCompanies(data: SyncData): SyncData {
+  const byName = new Map<string, Company[]>();
+  for (const c of data.companies) {
+    const key = c.name.trim().toLowerCase();
+    const group = byName.get(key) || [];
+    group.push(c);
+    byName.set(key, group);
+  }
+
+  // Build a remap: duplicateId -> survivorId
+  const idRemap = new Map<string, string>();
+  const survivingCompanies: Company[] = [];
+
+  for (const group of byName.values()) {
+    if (group.length === 1) {
+      survivingCompanies.push(group[0]);
+      continue;
+    }
+    // Keep the one that's active + most recently updated
+    group.sort((a, b) => {
+      if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
+      return b.updatedAt.localeCompare(a.updatedAt);
+    });
+    const survivor = group[0];
+    survivingCompanies.push(survivor);
+    for (let i = 1; i < group.length; i++) {
+      idRemap.set(group[i].id, survivor.id);
+    }
+  }
+
+  if (idRemap.size === 0) return data;
+
+  const remap = (id: string) => idRemap.get(id) || id;
+  const remappedProjects = data.projects.map((p) => idRemap.has(p.companyId) ? { ...p, companyId: remap(p.companyId) } : p);
+
+  // Also deduplicate projects with the same name under the same (remapped) company
+  const projectRemap = new Map<string, string>();
+  const byCompanyAndName = new Map<string, Project[]>();
+  for (const p of remappedProjects) {
+    const key = `${p.companyId}::${p.name.trim().toLowerCase()}`;
+    const group = byCompanyAndName.get(key) || [];
+    group.push(p);
+    byCompanyAndName.set(key, group);
+  }
+  const survivingProjects: Project[] = [];
+  for (const group of byCompanyAndName.values()) {
+    if (group.length === 1) {
+      survivingProjects.push(group[0]);
+      continue;
+    }
+    group.sort((a, b) => {
+      if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
+      return b.updatedAt.localeCompare(a.updatedAt);
+    });
+    survivingProjects.push(group[0]);
+    for (let i = 1; i < group.length; i++) {
+      projectRemap.set(group[i].id, group[0].id);
+    }
+  }
+
+  const remapProject = (id: string | undefined) => id ? (projectRemap.get(id) || id) : id;
+
   return {
+    companies: survivingCompanies,
+    projects: survivingProjects,
+    timeEntries: data.timeEntries.map((e) => ({ ...e, companyId: remap(e.companyId), projectId: remapProject(e.projectId) })),
+    invoices: data.invoices.map((inv) => ({ ...inv, companyId: remap(inv.companyId) })),
+    profile: data.profile,
+  };
+}
+
+export function mergeData(local: SyncData, remote: SyncData): SyncData {
+  const merged = {
     companies: mergeArray(local.companies, remote.companies),
     projects: mergeArray(local.projects, remote.projects),
     timeEntries: mergeArray(local.timeEntries, remote.timeEntries),
     invoices: mergeArray(local.invoices, remote.invoices),
     profile: local.profile, // Local profile always wins
   };
+  return deduplicateCompanies(merged);
 }
 
 // --- Conflict detection ---
