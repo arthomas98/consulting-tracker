@@ -11,6 +11,13 @@ import Modal from '../shared/Modal';
 
 const CHANGELOG: { version: string; date: string; changes: string[] }[] = [
   {
+    version: '1.3.1',
+    date: '2026-03-06',
+    changes: [
+      'Add Hours column to Accounts Receivable table',
+    ],
+  },
+  {
     version: '1.3',
     date: '2026-03-06',
     changes: [
@@ -364,32 +371,36 @@ export default function DashboardPage() {
 
   // Group AR items by company for the AR table
   const arByCompany = useMemo(() => {
-    type ARItem = { key: string; ref: string; amount: string; usdAmount: number | null; daysOutstanding: number; isUninvoiced?: boolean };
-    const groups = new Map<string, { companyName: string; items: ARItem[]; subtotalUSD: number }>();
+    type ARItem = { key: string; ref: string; hours: number; amount: string; usdAmount: number | null; daysOutstanding: number; isUninvoiced?: boolean };
+    const groups = new Map<string, { companyName: string; items: ARItem[]; subtotalUSD: number; subtotalHours: number }>();
 
     for (const item of arData.invoiceItems) {
-      const group = groups.get(item.inv.companyId) || { companyName: item.companyName, items: [], subtotalUSD: 0 };
+      const group = groups.get(item.inv.companyId) || { companyName: item.companyName, items: [], subtotalUSD: 0, subtotalHours: 0 };
       group.items.push({
         key: item.inv.id,
         ref: `Invoice #${item.inv.invoiceNumber}`,
+        hours: item.inv.totalHours,
         amount: formatCurrency(item.inv.totalAmount, item.inv.currency),
         usdAmount: item.usdAmount,
         daysOutstanding: item.daysOutstanding,
       });
+      group.subtotalHours += item.inv.totalHours;
       if (item.usdAmount != null) group.subtotalUSD += item.usdAmount;
       groups.set(item.inv.companyId, group);
     }
 
     for (const item of arData.entryItems) {
-      const group = groups.get(item.entry.companyId) || { companyName: item.companyName, items: [], subtotalUSD: 0 };
+      const group = groups.get(item.entry.companyId) || { companyName: item.companyName, items: [], subtotalUSD: 0, subtotalHours: 0 };
       group.items.push({
         key: item.entry.id,
         ref: item.entry.description || formatDate(item.entry.date),
+        hours: item.entry.hours,
         amount: formatCurrency(item.amount, item.currency),
         usdAmount: item.usdAmount,
         daysOutstanding: item.daysOutstanding,
         isUninvoiced: item.invoiceRequired,
       });
+      group.subtotalHours += item.entry.hours;
       if (item.usdAmount != null) group.subtotalUSD += item.usdAmount;
       groups.set(item.entry.companyId, group);
     }
@@ -412,7 +423,7 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">Dashboard</h2>
-        <button onClick={() => setShowChangelog(true)} className="text-xs text-gray-400 hover:text-blue-600 transition-colors">v1.3</button>
+        <button onClick={() => setShowChangelog(true)} className="text-xs text-gray-400 hover:text-blue-600 transition-colors">v1.3.1</button>
       </div>
       <p className="text-sm text-gray-500 -mt-4">
         New here? Check out the <Link to="/getting-started" className="text-blue-600 hover:text-blue-800 font-medium">Getting Started</Link> guide.
@@ -672,6 +683,7 @@ export default function DashboardPage() {
               <thead>
                 <tr className="text-left text-xs text-gray-400 uppercase tracking-wide">
                   <th className="pb-2 font-medium">Reference</th>
+                  <th className="pb-2 font-medium text-right">Hours</th>
                   <th className="pb-2 font-medium text-right">Amount</th>
                   <th className="pb-2 font-medium text-right">USD Equiv.</th>
                   <th className="pb-2 font-medium text-right">Days Out</th>
@@ -681,13 +693,16 @@ export default function DashboardPage() {
                 {arByCompany.map((group) => (
                   <Fragment key={group.companyId}>
                     <tr className="border-t border-gray-200">
-                      <td colSpan={4} className="pt-3 pb-1 font-semibold text-gray-900">{group.companyName}</td>
+                      <td colSpan={5} className="pt-3 pb-1 font-semibold text-gray-900">{group.companyName}</td>
                     </tr>
                     {group.items.map((item) => (
                       <tr key={item.key} className="border-t border-gray-50">
                         <td className="py-1.5 pl-4 text-gray-500 truncate max-w-64">
                           {item.isUninvoiced && <span className="text-xs text-orange-500 mr-1">Uninvoiced</span>}
                           {item.ref}
+                        </td>
+                        <td className="py-1.5 text-right tabular-nums text-gray-500">
+                          {item.hours > 0 ? `${formatHours(item.hours)}h` : '—'}
                         </td>
                         <td className="py-1.5 text-right tabular-nums">{item.amount}</td>
                         <td className="py-1.5 text-right tabular-nums">
@@ -703,6 +718,9 @@ export default function DashboardPage() {
                     {group.items.length > 1 && (
                       <tr className="border-t border-gray-100">
                         <td className="py-1.5 pl-4 text-gray-500 text-xs font-medium">Subtotal</td>
+                        <td className="py-1.5 text-right tabular-nums text-gray-500 text-xs font-medium">
+                          {group.subtotalHours > 0 ? `${formatHours(group.subtotalHours)}h` : ''}
+                        </td>
                         <td></td>
                         <td className="py-1.5 text-right tabular-nums font-medium text-gray-700">
                           {formatCurrency(group.subtotalUSD, 'USD')}
@@ -716,6 +734,7 @@ export default function DashboardPage() {
               <tfoot>
                 <tr className="border-t-2 border-gray-300 font-semibold">
                   <td className="pt-2">Total</td>
+                  <td></td>
                   <td></td>
                   <td className="pt-2 text-right tabular-nums">{formatCurrency(arData.totalUSD, 'USD')}</td>
                   <td></td>
