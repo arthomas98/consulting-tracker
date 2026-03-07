@@ -22,7 +22,7 @@ const statusColors: Record<string, string> = {
 export default function ReportsPage() {
   const { companies, projects, timeEntries, invoices } = useStorage();
   const [tab, setTab] = useState<Tab>('summary');
-  const [period, setPeriod] = useState<Period>('month');
+  const [period, setPeriod] = useState<Period>('year');
   const [companyFilter, setCompanyFilter] = useState('');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
