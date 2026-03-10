@@ -6,6 +6,7 @@ import DashboardPage from './components/dashboard/DashboardPage';
 import TimePage from './components/time/TimePage';
 import InvoicesPage from './components/invoices/InvoicesPage';
 import CompaniesPage from './components/companies/CompaniesPage';
+import ExpensesPage from './components/expenses/ExpensesPage';
 import ReportsPage from './components/reports/ReportsPage';
 import SettingsPage from './components/settings/SettingsPage';
 import GettingStartedPage from './components/help/GettingStartedPage';
@@ -21,6 +22,7 @@ export default function App() {
               <Route path="/time" element={<TimePage />} />
               <Route path="/invoices" element={<InvoicesPage />} />
               <Route path="/companies" element={<CompaniesPage />} />
+              <Route path="/expenses" element={<ExpensesPage />} />
               <Route path="/reports" element={<ReportsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/getting-started" element={<GettingStartedPage />} />

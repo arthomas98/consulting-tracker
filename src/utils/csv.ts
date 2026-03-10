@@ -1,4 +1,5 @@
-import type { TimeEntry, Invoice, Company, Project } from '../types';
+import type { TimeEntry, Invoice, Company, Project, Expense } from '../types';
+import { EXPENSE_CATEGORY_LABELS } from '../types';
 import { getEntryPaymentStatus, entryAmount } from './calculations';
 import { formatDate } from './dateUtils';
 
@@ -78,6 +79,33 @@ export function exportInvoicesCsv(
         i.retainerMonth ?? '',
         i.exchangeRateToUSD != null ? String(i.exchangeRateToUSD) : '',
         amountUSD,
+      ]);
+    });
+  return [toCsvRow(header), ...rows].join('\n');
+}
+
+export function exportExpensesCsv(
+  expenses: Expense[],
+  companies: Company[]
+): string {
+  const companyMap = new Map(companies.map((c) => [c.id, c]));
+  const header = ['Date', 'Category', 'Description', 'Amount', 'Currency', 'Vendor', 'Payment Method', 'Receipt', 'Client', 'Recurring', 'Notes'];
+  const rows = expenses
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((e) => {
+      const company = e.companyId ? companyMap.get(e.companyId) : undefined;
+      return toCsvRow([
+        formatDate(e.date),
+        EXPENSE_CATEGORY_LABELS[e.category],
+        e.description,
+        String(e.amount),
+        e.currency,
+        e.vendor ?? '',
+        e.paymentMethod ?? '',
+        e.hasReceipt ? 'Yes' : 'No',
+        company?.name ?? '',
+        e.recurring ? 'Yes' : 'No',
+        e.notes ?? '',
       ]);
     });
   return [toCsvRow(header), ...rows].join('\n');

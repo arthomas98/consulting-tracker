@@ -9,13 +9,14 @@ const STORAGE_KEYS = {
   projects: 'ct_projects',
   timeEntries: 'ct_timeEntries',
   invoices: 'ct_invoices',
+  expenses: 'ct_expenses',
   profile: 'ct_profile',
 } as const;
 
 const EXPECTED_KEYS = ['companies', 'projects', 'timeEntries', 'invoices'] as const;
 
 export default function SettingsPage() {
-  const { companies, projects, timeEntries, invoices, profile, saveProfile, refresh } = useStorage();
+  const { companies, projects, timeEntries, invoices, expenses, profile, saveProfile, refresh } = useStorage();
   const { syncStatus, forcePush, forcePull, connect, disconnect, spreadsheetUrl, triggerPush } = useSync();
   const fileRef = useRef<HTMLInputElement>(null);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -29,7 +30,7 @@ export default function SettingsPage() {
   }
 
   function handleExport() {
-    const data = { companies, projects, timeEntries, invoices, profile };
+    const data = { companies, projects, timeEntries, invoices, expenses, profile };
     const json = JSON.stringify(data, null, 2);
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -58,7 +59,7 @@ export default function SettingsPage() {
           }
         }
 
-        if (!confirm(`This will replace all your current data with:\n\n\u2022 ${data.companies.length} companies\n\u2022 ${data.projects.length} projects\n\u2022 ${data.timeEntries.length} time entries\n\u2022 ${data.invoices.length} invoices\n\nContinue?`)) {
+        if (!confirm(`This will replace all your current data with:\n\n\u2022 ${data.companies.length} companies\n\u2022 ${data.projects.length} projects\n\u2022 ${data.timeEntries.length} time entries\n\u2022 ${data.invoices.length} invoices\n\u2022 ${Array.isArray(data.expenses) ? data.expenses.length : 0} expenses\n\nContinue?`)) {
           return;
         }
 
@@ -67,13 +68,16 @@ export default function SettingsPage() {
         localStorage.setItem(STORAGE_KEYS.projects, JSON.stringify(data.projects));
         localStorage.setItem(STORAGE_KEYS.timeEntries, JSON.stringify(data.timeEntries));
         localStorage.setItem(STORAGE_KEYS.invoices, JSON.stringify(data.invoices));
+        if (Array.isArray(data.expenses)) {
+          localStorage.setItem(STORAGE_KEYS.expenses, JSON.stringify(data.expenses));
+        }
         if (data.profile) {
           localStorage.setItem(STORAGE_KEYS.profile, JSON.stringify(data.profile));
         }
 
         refresh();
         setEditProfile(data.profile || profile);
-        setMessage({ type: 'success', text: `Imported ${data.companies.length} companies, ${data.projects.length} projects, ${data.timeEntries.length} time entries, ${data.invoices.length} invoices.` });
+        setMessage({ type: 'success', text: `Imported ${data.companies.length} companies, ${data.projects.length} projects, ${data.timeEntries.length} time entries, ${data.invoices.length} invoices${Array.isArray(data.expenses) ? `, ${data.expenses.length} expenses` : ''}.` });
 
         // Push imported data to Sheets if connected
         triggerPush();

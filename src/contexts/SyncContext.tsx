@@ -99,7 +99,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       const spreadsheetId = getSpreadsheetId();
       if (!spreadsheetId) return;
 
-      const { companies, projects, timeEntries, invoices, profile } = storageRef.current;
+      const { companies, projects, timeEntries, invoices, expenses, profile } = storageRef.current;
 
       // Safety: never push empty data over an existing spreadsheet
       if (companies.length === 0 && timeEntries.length === 0) {
@@ -110,7 +110,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const localData = { companies, projects, timeEntries, invoices, profile };
+      const localData = { companies, projects, timeEntries, invoices, expenses, profile };
 
       // Check for conflict before pushing
       const { hasConflict, remoteData } = await checkForConflict(spreadsheetId);
@@ -241,8 +241,8 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       } else {
         // Push current local data to Sheets
         console.log('[Sync] Pushing local data to Sheets...');
-        const { companies: c, projects, timeEntries: te, invoices, profile } = storageRef.current;
-        await syncToSheets({ companies: c, projects, timeEntries: te, invoices, profile });
+        const { companies: c, projects, timeEntries: te, invoices, expenses, profile } = storageRef.current;
+        await syncToSheets({ companies: c, projects, timeEntries: te, invoices, expenses, profile });
         console.log('[Sync] Push complete');
       }
 

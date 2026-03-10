@@ -1,4 +1,4 @@
-import type { Company, Project, TimeEntry, Invoice } from '../types';
+import type { Company, Project, TimeEntry, Invoice, Expense } from '../types';
 
 export interface BusinessProfile {
   name: string;
@@ -16,6 +16,7 @@ const KEYS = {
   projects: 'ct_projects',
   timeEntries: 'ct_timeEntries',
   invoices: 'ct_invoices',
+  expenses: 'ct_expenses',
   profile: 'ct_profile',
 } as const;
 
@@ -124,18 +125,41 @@ export function deleteInvoice(id: string): Invoice[] {
   return updated;
 }
 
+// Expenses
+export function getExpenses(): Expense[] {
+  return read<Expense>(KEYS.expenses);
+}
+
+export function saveExpense(expense: Expense): Expense[] {
+  const expenses = getExpenses();
+  const idx = expenses.findIndex((e) => e.id === expense.id);
+  const updated = idx >= 0
+    ? expenses.map((e) => (e.id === expense.id ? expense : e))
+    : [...expenses, expense];
+  write(KEYS.expenses, updated);
+  return updated;
+}
+
+export function deleteExpense(id: string): Expense[] {
+  const updated = getExpenses().filter((e) => e.id !== id);
+  write(KEYS.expenses, updated);
+  return updated;
+}
+
 // Bulk write (used when pulling from Sheets)
 export function writeAll(data: {
   companies: Company[];
   projects: Project[];
   timeEntries: TimeEntry[];
   invoices: Invoice[];
+  expenses: Expense[];
   profile: BusinessProfile;
 }): void {
   write(KEYS.companies, data.companies);
   write(KEYS.projects, data.projects);
   write(KEYS.timeEntries, data.timeEntries);
   write(KEYS.invoices, data.invoices);
+  write(KEYS.expenses, data.expenses);
   localStorage.setItem(KEYS.profile, JSON.stringify(data.profile));
 }
 

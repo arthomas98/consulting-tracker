@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useCallback } from 'react';
 import type { ReactNode } from 'react';
-import type { Company, Project, TimeEntry, Invoice } from '../types';
+import type { Company, Project, TimeEntry, Invoice, Expense } from '../types';
 import type { BusinessProfile } from '../utils/storage';
 import * as storage from '../utils/storage';
 
@@ -9,6 +9,7 @@ interface StorageState {
   projects: Project[];
   timeEntries: TimeEntry[];
   invoices: Invoice[];
+  expenses: Expense[];
   profile: BusinessProfile;
 }
 
@@ -22,6 +23,8 @@ interface StorageContextValue extends StorageState {
   saveTimeEntries: (entries: TimeEntry[]) => void;
   saveInvoice: (invoice: Invoice) => void;
   deleteInvoice: (id: string) => void;
+  saveExpense: (expense: Expense) => void;
+  deleteExpense: (id: string) => void;
   saveProfile: (profile: BusinessProfile) => void;
   refresh: () => void;
 }
@@ -34,6 +37,7 @@ export function StorageProvider({ children }: { children: ReactNode }) {
     projects: storage.getProjects(),
     timeEntries: storage.getTimeEntries(),
     invoices: storage.getInvoices(),
+    expenses: storage.getExpenses(),
     profile: storage.getProfile(),
   }));
 
@@ -43,6 +47,7 @@ export function StorageProvider({ children }: { children: ReactNode }) {
       projects: storage.getProjects(),
       timeEntries: storage.getTimeEntries(),
       invoices: storage.getInvoices(),
+      expenses: storage.getExpenses(),
       profile: storage.getProfile(),
     });
   }, []);
@@ -105,6 +110,18 @@ export function StorageProvider({ children }: { children: ReactNode }) {
     notifyDataChange();
   }, [notifyDataChange]);
 
+  const saveExpenseFn = useCallback((expense: Expense) => {
+    const updated = storage.saveExpense(expense);
+    setState((s) => ({ ...s, expenses: updated }));
+    notifyDataChange();
+  }, [notifyDataChange]);
+
+  const deleteExpenseFn = useCallback((id: string) => {
+    const updated = storage.deleteExpense(id);
+    setState((s) => ({ ...s, expenses: updated }));
+    notifyDataChange();
+  }, [notifyDataChange]);
+
   const saveProfileFn = useCallback((profile: BusinessProfile) => {
     const updated = storage.saveProfile(profile);
     setState((s) => ({ ...s, profile: updated }));
@@ -124,6 +141,8 @@ export function StorageProvider({ children }: { children: ReactNode }) {
         saveTimeEntries,
         saveInvoice,
         deleteInvoice,
+        saveExpense: saveExpenseFn,
+        deleteExpense: deleteExpenseFn,
         saveProfile: saveProfileFn,
         refresh,
       }}

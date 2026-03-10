@@ -1,4 +1,4 @@
-import type { Company, Currency, BillingType, Project, TimeEntry, Invoice, InvoiceStatus } from '../types';
+import type { Company, Currency, BillingType, Project, TimeEntry, Invoice, InvoiceStatus, Expense, ExpenseCategory } from '../types';
 import type { BusinessProfile } from '../utils/storage';
 
 // Map app data to Google Sheets rows (header + data rows)
@@ -148,6 +148,41 @@ export function rowsToInvoices(rows: string[][]): Invoice[] {
     billingType: (hasBillingType && r[14] ? r[14] as BillingType : 'hourly'),
     retainerMonth: hasBillingType && r[15] ? r[15] : undefined,
     exchangeRateToUSD: hasExchangeRate && r[16] ? parseFloat(r[16]) : undefined,
+    createdAt: r[12],
+    updatedAt: r[13],
+  }));
+}
+
+export function expensesToRows(expenses: Expense[]): string[][] {
+  const header = ['ID', 'Date', 'Category', 'Description', 'Amount', 'Currency', 'Vendor', 'Payment Method', 'Has Receipt', 'Company ID', 'Recurring', 'Notes', 'Created', 'Updated'];
+  const rows = expenses.map((e) => [
+    e.id, e.date, e.category, e.description,
+    String(e.amount), e.currency,
+    e.vendor || '', e.paymentMethod || '',
+    e.hasReceipt ? 'Yes' : 'No',
+    e.companyId || '',
+    e.recurring ? 'Yes' : 'No',
+    e.notes || '',
+    e.createdAt, e.updatedAt,
+  ]);
+  return [header, ...rows];
+}
+
+export function rowsToExpenses(rows: string[][]): Expense[] {
+  if (rows.length <= 1) return [];
+  return rows.slice(1).map((r) => ({
+    id: r[0],
+    date: r[1],
+    category: (r[2] as ExpenseCategory) || 'other',
+    description: r[3],
+    amount: parseFloat(r[4]) || 0,
+    currency: (r[5] as Currency) || 'USD',
+    vendor: r[6] || undefined,
+    paymentMethod: r[7] || undefined,
+    hasReceipt: r[8] === 'Yes',
+    companyId: r[9] || undefined,
+    recurring: r[10] === 'Yes',
+    notes: r[11] || undefined,
     createdAt: r[12],
     updatedAt: r[13],
   }));

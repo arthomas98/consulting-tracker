@@ -1,13 +1,13 @@
-import type { Company, Project, TimeEntry, Invoice } from '../types';
+import type { Company, Project, TimeEntry, Invoice, Expense } from '../types';
 import type { BusinessProfile } from '../utils/storage';
 import {
-  companiesToRows, projectsToRows, timeEntriesToRows, invoicesToRows, profileToRows,
-  rowsToCompanies, rowsToProjects, rowsToTimeEntries, rowsToInvoices, rowsToProfile,
+  companiesToRows, projectsToRows, timeEntriesToRows, invoicesToRows, expensesToRows, profileToRows,
+  rowsToCompanies, rowsToProjects, rowsToTimeEntries, rowsToInvoices, rowsToExpenses, rowsToProfile,
 } from './sheetsDataMapper';
 
 const SPREADSHEET_ID_KEY = 'ct_sheets_spreadsheetId';
 const LAST_SYNC_KEY = 'ct_sheets_lastSyncTime';
-const DATA_SHEET_NAMES = ['Companies', 'Projects', 'TimeEntries', 'Invoices', 'Profile'];
+const DATA_SHEET_NAMES = ['Companies', 'Projects', 'TimeEntries', 'Invoices', 'Expenses', 'Profile'];
 const SHEET_NAMES = [...DATA_SHEET_NAMES, '_Metadata'];
 
 export function getSpreadsheetId(): string | null {
@@ -77,6 +77,7 @@ export interface SyncData {
   projects: Project[];
   timeEntries: TimeEntry[];
   invoices: Invoice[];
+  expenses: Expense[];
   profile: BusinessProfile;
 }
 
@@ -207,6 +208,7 @@ function deduplicateCompanies(data: SyncData): SyncData {
     projects: survivingProjects,
     timeEntries: data.timeEntries.map((e) => ({ ...e, companyId: remap(e.companyId), projectId: remapProject(e.projectId) })),
     invoices: data.invoices.map((inv) => ({ ...inv, companyId: remap(inv.companyId) })),
+    expenses: data.expenses.map((exp) => exp.companyId ? { ...exp, companyId: remap(exp.companyId) } : exp),
     profile: data.profile,
   };
 }
@@ -217,6 +219,7 @@ export function mergeData(local: SyncData, remote: SyncData): SyncData {
     projects: mergeArray(local.projects, remote.projects),
     timeEntries: mergeArray(local.timeEntries, remote.timeEntries),
     invoices: mergeArray(local.invoices, remote.invoices),
+    expenses: mergeArray(local.expenses, remote.expenses),
     profile: local.profile, // Local profile always wins
   };
   return deduplicateCompanies(merged);
@@ -277,6 +280,7 @@ export async function syncToSheets(data: SyncData): Promise<string> {
     { range: 'Projects!A1', values: projectsToRows(data.projects) },
     { range: 'TimeEntries!A1', values: timeEntriesToRows(data.timeEntries) },
     { range: 'Invoices!A1', values: invoicesToRows(data.invoices) },
+    { range: 'Expenses!A1', values: expensesToRows(data.expenses) },
     { range: 'Profile!A1', values: profileToRows(data.profile) },
   ];
 
@@ -326,7 +330,8 @@ export async function pullFromSheets(): Promise<SyncData | null> {
     projects: rowsToProjects(getRows(1)),
     timeEntries: rowsToTimeEntries(getRows(2)),
     invoices: rowsToInvoices(getRows(3)),
-    profile: rowsToProfile(getRows(4)),
+    expenses: rowsToExpenses(getRows(4)),
+    profile: rowsToProfile(getRows(5)),
   };
 }
 
