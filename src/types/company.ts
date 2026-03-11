@@ -15,6 +15,7 @@ export interface Company {
   contactEmail?: string;
   notes?: string;
   nextInvoiceNumber?: number;
+  vatReverseCharge?: boolean;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;

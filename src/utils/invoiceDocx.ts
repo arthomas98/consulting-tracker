@@ -24,6 +24,7 @@ export async function generateInvoiceDocx(
   currency: Currency,
   profile: BusinessProfile,
   isRetainer: boolean,
+  vatReverseCharge: boolean,
   retainerLine?: { description: string; amount: string },
   notes?: string,
 ): Promise<void> {
@@ -319,6 +320,28 @@ export async function generateInvoiceDocx(
     );
   }
 
+  // --- VAT Reverse Charge Notice ---
+  const vatSection: InstanceType<typeof Paragraph>[] = [];
+  if (vatReverseCharge) {
+    const vatText = `Reverse charge applies — recipient is liable for VAT under Articles 44 and 196 of EU VAT Directive 2006/112/EC.${profile.ein ? ` Supplier Tax ID (EIN): ${profile.ein}` : ''}`;
+    vatSection.push(
+      new Paragraph({
+        spacing: { before: 300 },
+        shading: { fill: 'EFF6FF' },
+        border: {
+          top: { style: BorderStyle.SINGLE, size: 1, color: '93C5FD', space: 4 },
+          bottom: { style: BorderStyle.SINGLE, size: 1, color: '93C5FD', space: 4 },
+          left: { style: BorderStyle.SINGLE, size: 1, color: '93C5FD', space: 4 },
+          right: { style: BorderStyle.SINGLE, size: 1, color: '93C5FD', space: 4 },
+        },
+        children: [
+          new TextRun({ text: 'VAT Notice: ', bold: true, size: 20, color: '0369A1', font: 'Calibri' }),
+          new TextRun({ text: vatText, size: 20, color: '0369A1', font: 'Calibri' }),
+        ],
+      }),
+    );
+  }
+
   // --- Payment Information ---
   const bankItems: string[] = [];
   if (profile.ein) bankItems.push(`EIN: ${profile.ein}`);
@@ -356,6 +379,7 @@ export async function generateInvoiceDocx(
         new Paragraph({ spacing: { after: 300 } }),
         lineItemsTable,
         ...notesSection,
+        ...vatSection,
         ...bankSection,
       ],
     }],

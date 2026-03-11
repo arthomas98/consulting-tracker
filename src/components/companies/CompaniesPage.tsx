@@ -90,6 +90,7 @@ export default function CompaniesPage() {
                   {!co.isActive && <Badge color="gray">Inactive</Badge>}
                   {co.billingType === 'fixed_monthly' && <Badge color="purple">Retainer</Badge>}
                   {co.invoiceRequired && <Badge color="blue">Invoice</Badge>}
+                  {co.vatReverseCharge && <Badge color="cyan">VAT RC</Badge>}
                 </div>
               </div>
               <p className="text-lg font-medium text-gray-700">
@@ -188,15 +189,27 @@ export default function CompaniesPage() {
                 </select>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="invoiceRequired"
-                checked={editing.invoiceRequired}
-                onChange={(e) => setEditing({ ...editing, invoiceRequired: e.target.checked })}
-                className="rounded"
-              />
-              <label htmlFor="invoiceRequired" className="text-sm text-gray-700">Requires formal invoice for payment</label>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="invoiceRequired"
+                  checked={editing.invoiceRequired}
+                  onChange={(e) => setEditing({ ...editing, invoiceRequired: e.target.checked })}
+                  className="rounded"
+                />
+                <label htmlFor="invoiceRequired" className="text-sm text-gray-700">Requires formal invoice for payment</label>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="vatReverseCharge"
+                  checked={editing.vatReverseCharge || false}
+                  onChange={(e) => setEditing({ ...editing, vatReverseCharge: e.target.checked })}
+                  className="rounded"
+                />
+                <label htmlFor="vatReverseCharge" className="text-sm text-gray-700">EU/UK client — VAT reverse charge applies</label>
+              </div>
             </div>
             {editing.invoiceRequired && (
               <div>
