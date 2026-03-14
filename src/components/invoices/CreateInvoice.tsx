@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useStorage } from '../../contexts/StorageContext';
-import type { Invoice, LineItem } from '../../types';
+import type { Invoice, LineItem, InvoiceDetailLevel } from '../../types';
 import { totalHours, totalAmount, isFixedMonthly } from '../../utils/calculations';
 import { formatDate, today, getMonthLabel } from '../../utils/dateUtils';
 import { formatCurrency, formatHours } from '../../utils/formatCurrency';
@@ -18,6 +18,7 @@ export default function CreateInvoice({ onDone }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [retainerMonth, setRetainerMonth] = useState(() => today().substring(0, 7));
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
+  const [detailLevel, setDetailLevel] = useState<InvoiceDetailLevel>('weekly');
 
   function addLineItem() {
     setLineItems((prev) => [...prev, { id: crypto.randomUUID(), description: '', amount: 0 }]);
@@ -126,6 +127,7 @@ export default function CreateInvoice({ onDone }: Props) {
         rateUsed: company.hourlyRate,
         status: 'draft',
         lineItems: validLineItems.length > 0 ? validLineItems : undefined,
+        detailLevel: detailLevel !== 'weekly' ? detailLevel : undefined,
         createdAt: now,
         updatedAt: now,
       };
@@ -180,6 +182,18 @@ export default function CreateInvoice({ onDone }: Props) {
         </>
       ) : (
         <>
+          <div className="flex items-center gap-3 text-sm">
+            <span className="text-gray-600">Invoice detail:</span>
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input type="radio" name="detailLevel" checked={detailLevel === 'weekly'} onChange={() => setDetailLevel('weekly')} className="text-blue-600" />
+              Summarize by week
+            </label>
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input type="radio" name="detailLevel" checked={detailLevel === 'detailed'} onChange={() => setDetailLevel('detailed')} className="text-blue-600" />
+              Individual entries
+            </label>
+          </div>
+
           {uninvoicedEntries.length === 0 ? (
             <p className="text-gray-500 text-sm py-4">No uninvoiced entries for this company.</p>
           ) : (

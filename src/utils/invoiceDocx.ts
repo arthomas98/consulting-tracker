@@ -14,6 +14,14 @@ interface ProjectGroup {
   totalAmount: number;
 }
 
+interface DetailedLine {
+  date: string;
+  projectName: string | null;
+  description: string;
+  hours: number;
+  amount: number;
+}
+
 export async function generateInvoiceDocx(
   invoice: Invoice,
   companyName: string,
@@ -28,6 +36,7 @@ export async function generateInvoiceDocx(
   retainerLine?: { description: string; amount: string },
   notes?: string,
   lineItems?: LineItem[],
+  detailedLines?: DetailedLine[],
 ): Promise<void> {
   const {
     Document, Packer, Paragraph, Table, TableRow, TableCell,
@@ -236,8 +245,111 @@ export async function generateInvoiceDocx(
         ],
       }),
     );
+  } else if (detailedLines) {
+    // Header row — 4 columns: Date, Description, Hours, Amount
+    tableRows.push(
+      new TableRow({
+        children: [
+          new TableCell({
+            width: { size: 15, type: WidthType.PERCENTAGE },
+            borders: thinBorder,
+            shading: { fill: 'F5F5F5' },
+            children: [new Paragraph({ children: [new TextRun({ text: 'Date', bold: true, size: 20, font: 'Calibri' })] })],
+          }),
+          new TableCell({
+            width: { size: 45, type: WidthType.PERCENTAGE },
+            borders: thinBorder,
+            shading: { fill: 'F5F5F5' },
+            children: [new Paragraph({ children: [new TextRun({ text: 'Description', bold: true, size: 20, font: 'Calibri' })] })],
+          }),
+          new TableCell({
+            width: { size: 15, type: WidthType.PERCENTAGE },
+            borders: thinBorder,
+            shading: { fill: 'F5F5F5' },
+            children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun({ text: 'Hours', bold: true, size: 20, font: 'Calibri' })] })],
+          }),
+          new TableCell({
+            width: { size: 25, type: WidthType.PERCENTAGE },
+            borders: thinBorder,
+            shading: { fill: 'F5F5F5' },
+            children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun({ text: 'Amount', bold: true, size: 20, font: 'Calibri' })] })],
+          }),
+        ],
+      }),
+    );
+    // Individual entry rows
+    for (const line of detailedLines) {
+      const desc = line.projectName ? `${line.projectName}: ${line.description}` : line.description;
+      tableRows.push(
+        new TableRow({
+          children: [
+            new TableCell({
+              borders: thinBorder,
+              children: [new Paragraph({ children: [new TextRun({ text: formatDateLocal(line.date), size: 20, color: '555555', font: 'Calibri' })] })],
+            }),
+            new TableCell({
+              borders: thinBorder,
+              children: [new Paragraph({ children: [new TextRun({ text: desc, size: 20, font: 'Calibri' })] })],
+            }),
+            new TableCell({
+              borders: thinBorder,
+              children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun({ text: formatHours(line.hours), size: 20, font: 'Calibri' })] })],
+            }),
+            new TableCell({
+              borders: thinBorder,
+              children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun({ text: fmtCurrency(line.amount, currency), size: 20, font: 'Calibri' })] })],
+            }),
+          ],
+        }),
+      );
+    }
+    // Line items
+    if (lineItems) {
+      for (const li of lineItems) {
+        const detail = li.quantity && li.unitPrice ? ` (${li.quantity} × ${fmtCurrency(li.unitPrice, currency)})` : '';
+        tableRows.push(
+          new TableRow({
+            children: [
+              new TableCell({
+                columnSpan: 2,
+                borders: thinBorder,
+                children: [new Paragraph({ children: [new TextRun({ text: li.description + detail, size: 20, font: 'Calibri' })] })],
+              }),
+              new TableCell({
+                borders: thinBorder,
+                children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun({ text: '', size: 20, font: 'Calibri' })] })],
+              }),
+              new TableCell({
+                borders: thinBorder,
+                children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun({ text: fmtCurrency(li.amount, currency), size: 20, font: 'Calibri' })] })],
+              }),
+            ],
+          }),
+        );
+      }
+    }
+    // Totals footer
+    tableRows.push(
+      new TableRow({
+        children: [
+          new TableCell({
+            columnSpan: 2,
+            borders: thickTopBorder,
+            children: [new Paragraph({ children: [new TextRun({ text: 'Total', bold: true, size: 20, font: 'Calibri' })] })],
+          }),
+          new TableCell({
+            borders: thickTopBorder,
+            children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun({ text: totalHoursStr, bold: true, size: 20, font: 'Calibri' })] })],
+          }),
+          new TableCell({
+            borders: thickTopBorder,
+            children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun({ text: totalAmountStr, bold: true, size: 20, font: 'Calibri' })] })],
+          }),
+        ],
+      }),
+    );
   } else {
-    // Header row
+    // Header row — 3 columns: Description, Hours, Amount (weekly summary)
     tableRows.push(
       new TableRow({
         children: [

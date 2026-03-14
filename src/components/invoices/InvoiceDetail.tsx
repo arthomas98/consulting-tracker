@@ -89,6 +89,28 @@ function groupEntriesByProjectAndWeek(
   return groups;
 }
 
+export interface DetailedLine {
+  date: string;
+  projectName: string | null;
+  description: string;
+  hours: number;
+  amount: number;
+}
+
+function buildDetailedLines(
+  entries: TimeEntry[],
+  projectMap: Map<string, Project>,
+  rate: number,
+): DetailedLine[] {
+  return entries.map((e) => ({
+    date: e.date,
+    projectName: e.projectId ? (projectMap.get(e.projectId)?.name || null) : null,
+    description: e.description,
+    hours: e.hours,
+    amount: e.fixedAmount != null ? e.fixedAmount : e.hours * rate,
+  }));
+}
+
 function buildPrintHtml(
   invoice: Invoice,
   companyName: string,
@@ -103,6 +125,7 @@ function buildPrintHtml(
   retainerLine?: { description: string; amount: string },
   notes?: string,
   lineItems?: LineItem[],
+  detailedLines?: DetailedLine[],
 ) {
   const rateLabel = isRetainer ? 'Monthly Retainer' : `${rate}/hr`;
 
@@ -135,39 +158,66 @@ function buildPrintHtml(
 </table>`;
   } else {
     const rows: string[] = [];
-    for (const group of groups) {
-      if (group.projectName) {
-        rows.push(`<tr><td colspan="3" style="padding:10px 8px 4px;font-weight:600;border-bottom:1px solid #eee">${esc(group.projectName)}</td></tr>`);
-      }
-      for (const week of group.weeks) {
-        const weekLabel = `Week of ${formatDate(week.mondayDate)}`;
+    if (detailedLines) {
+      for (const line of detailedLines) {
+        const desc = line.projectName
+          ? `${esc(line.projectName)}: ${esc(line.description)}`
+          : esc(line.description);
         rows.push(`<tr>
-          <td style="padding:6px 8px 6px ${group.projectName ? '24px' : '8px'};border-bottom:1px solid #eee;color:#555">${esc(weekLabel)}</td>
-          <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right">${formatHours(week.hours)}</td>
-          <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right">${formatCurrency(week.amount, currency)}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #eee;color:#555">${formatDate(line.date)}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #eee">${desc}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right">${formatHours(line.hours)}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right">${formatCurrency(line.amount, currency)}</td>
         </tr>`);
       }
+    } else {
+      for (const group of groups) {
+        if (group.projectName) {
+          rows.push(`<tr><td colspan="3" style="padding:10px 8px 4px;font-weight:600;border-bottom:1px solid #eee">${esc(group.projectName)}</td></tr>`);
+        }
+        for (const week of group.weeks) {
+          const weekLabel = `Week of ${formatDate(week.mondayDate)}`;
+          rows.push(`<tr>
+            <td style="padding:6px 8px 6px ${group.projectName ? '24px' : '8px'};border-bottom:1px solid #eee;color:#555">${esc(weekLabel)}</td>
+            <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right">${formatHours(week.hours)}</td>
+            <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right">${formatCurrency(week.amount, currency)}</td>
+          </tr>`);
+        }
+      }
     }
-    // Add line items as separate rows (span hours column)
+    // Add line items as separate rows
     const liRows = (lineItems || []).map((li) => {
       const qtyStr = li.quantity ? `${li.quantity}` : '';
       const upStr = li.unitPrice ? formatCurrency(li.unitPrice, currency) : '';
       const detail = qtyStr && upStr ? ` (${qtyStr} × ${upStr})` : '';
+      if (detailedLines) {
+        return `<tr>
+          <td colspan="2" style="padding:6px 8px;border-bottom:1px solid #eee">${esc(li.description)}${detail}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right"></td>
+          <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right">${formatCurrency(li.amount, currency)}</td>
+        </tr>`;
+      }
       return `<tr>
         <td style="padding:6px 8px;border-bottom:1px solid #eee">${esc(li.description)}${detail}</td>
         <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right"></td>
         <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right">${formatCurrency(li.amount, currency)}</td>
       </tr>`;
     }).join('');
+    const headerCols = detailedLines
+      ? '<th>Date</th><th>Description</th><th style="text-align:right">Hours</th><th style="text-align:right">Amount</th>'
+      : '<th>Description</th><th style="text-align:right">Hours</th><th style="text-align:right">Amount</th>';
+    const footerCols = detailedLines
+      ? `<td colspan="2" style="font-weight:600;border-top:2px solid #ddd;padding:8px">Total</td>
+         <td style="font-weight:600;border-top:2px solid #ddd;padding:8px;text-align:right">${esc(totalHoursStr)}</td>
+         <td style="font-weight:600;border-top:2px solid #ddd;padding:8px;text-align:right">${esc(totalAmountStr)}</td>`
+      : `<td style="font-weight:600;border-top:2px solid #ddd;padding:8px">Total</td>
+         <td style="font-weight:600;border-top:2px solid #ddd;padding:8px;text-align:right">${esc(totalHoursStr)}</td>
+         <td style="font-weight:600;border-top:2px solid #ddd;padding:8px;text-align:right">${esc(totalAmountStr)}</td>`;
     bodyHtml = `
 <table>
-  <thead><tr><th>Description</th><th style="text-align:right">Hours</th><th style="text-align:right">Amount</th></tr></thead>
+  <thead><tr>${headerCols}</tr></thead>
   <tbody>${rows.join('')}${liRows}</tbody>
-  <tfoot><tr>
-    <td style="font-weight:600;border-top:2px solid #ddd;padding:8px">Total</td>
-    <td style="font-weight:600;border-top:2px solid #ddd;padding:8px;text-align:right">${esc(totalHoursStr)}</td>
-    <td style="font-weight:600;border-top:2px solid #ddd;padding:8px;text-align:right">${esc(totalAmountStr)}</td>
-  </tr></tfoot>
+  <tfoot><tr>${footerCols}</tr></tfoot>
 </table>`;
   }
 
@@ -243,9 +293,16 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
     [timeEntries, invoice.timeEntryIds]
   );
 
+  const isDetailed = invoice.detailLevel === 'detailed';
+
   const grouped = useMemo(
-    () => isRetainer ? [] : groupEntriesByProjectAndWeek(entries, projectMap, invoice.rateUsed),
-    [entries, projectMap, invoice.rateUsed, isRetainer]
+    () => (isRetainer || isDetailed) ? [] : groupEntriesByProjectAndWeek(entries, projectMap, invoice.rateUsed),
+    [entries, projectMap, invoice.rateUsed, isRetainer, isDetailed]
+  );
+
+  const detailedLines = useMemo(
+    () => isDetailed ? buildDetailedLines(entries, projectMap, invoice.rateUsed) : undefined,
+    [entries, projectMap, invoice.rateUsed, isDetailed]
   );
 
   const [sendingRate, setSendingRate] = useState(false);
@@ -343,6 +400,7 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
       retainerLine,
       invoice.notes,
       invoice.lineItems,
+      detailedLines,
     );
 
     const win = window.open('', '_blank');
@@ -369,6 +427,7 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
       retainerLine,
       invoice.notes,
       invoice.lineItems,
+      detailedLines,
     );
   }
 
@@ -425,6 +484,47 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
             <tfoot className="bg-gray-50 font-semibold">
               <tr>
                 <td className="px-3 py-2">Total</td>
+                <td className="px-3 py-2 text-right">{formatCurrency(invoice.totalAmount, invoice.currency)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        ) : detailedLines ? (
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="text-left px-3 py-2 font-medium w-24">Date</th>
+                <th className="text-left px-3 py-2 font-medium">Description</th>
+                <th className="text-right px-3 py-2 font-medium w-20">Hours</th>
+                <th className="text-right px-3 py-2 font-medium w-28">Amount</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {detailedLines.map((line, i) => (
+                <tr key={i}>
+                  <td className="px-3 py-2 text-gray-500 tabular-nums">{formatDate(line.date)}</td>
+                  <td className="px-3 py-2">
+                    {line.projectName ? <span className="text-gray-400 mr-1">{line.projectName}:</span> : null}
+                    {line.description}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">{formatHours(line.hours)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(line.amount, invoice.currency)}</td>
+                </tr>
+              ))}
+              {invoice.lineItems?.map((li) => (
+                <tr key={li.id}>
+                  <td colSpan={2} className="px-3 py-2">
+                    {li.description}
+                    {li.quantity && li.unitPrice ? <span className="text-gray-400 ml-1">({li.quantity} × {formatCurrency(li.unitPrice, invoice.currency)})</span> : null}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums"></td>
+                  <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(li.amount, invoice.currency)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className="bg-gray-50 font-semibold">
+              <tr>
+                <td colSpan={2} className="px-3 py-2">Total</td>
+                <td className="px-3 py-2 text-right">{formatHours(invoice.totalHours)}</td>
                 <td className="px-3 py-2 text-right">{formatCurrency(invoice.totalAmount, invoice.currency)}</td>
               </tr>
             </tfoot>

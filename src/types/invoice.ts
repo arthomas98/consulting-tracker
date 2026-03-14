@@ -1,6 +1,7 @@
 import type { Currency, BillingType } from './company';
 
 export type InvoiceStatus = 'draft' | 'sent' | 'paid';
+export type InvoiceDetailLevel = 'weekly' | 'detailed';
 
 export interface LineItem {
   id: string;
@@ -27,6 +28,7 @@ export interface Invoice {
   billingType?: BillingType;
   retainerMonth?: string;
   lineItems?: LineItem[];
+  detailLevel?: InvoiceDetailLevel;
   exchangeRateToUSD?: number;
   createdAt: string;
   updatedAt: string;
