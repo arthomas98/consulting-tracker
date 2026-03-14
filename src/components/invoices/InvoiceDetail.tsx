@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useStorage } from '../../contexts/StorageContext';
-import type { Invoice, TimeEntry, Currency } from '../../types';
+import type { Invoice, TimeEntry, Currency, LineItem } from '../../types';
 import type { Project } from '../../types';
 import type { BusinessProfile } from '../../utils/storage';
 import { formatDate, today, getMonthLabel, getMondayDate } from '../../utils/dateUtils';
@@ -102,8 +102,19 @@ function buildPrintHtml(
   vatReverseCharge: boolean,
   retainerLine?: { description: string; amount: string },
   notes?: string,
+  lineItems?: LineItem[],
 ) {
   const rateLabel = isRetainer ? 'Monthly Retainer' : `${rate}/hr`;
+
+  const lineItemRows = (lineItems || []).map((li) => {
+    const qtyStr = li.quantity ? `${li.quantity}` : '';
+    const upStr = li.unitPrice ? formatCurrency(li.unitPrice, currency) : '';
+    const detail = qtyStr && upStr ? ` (${qtyStr} × ${upStr})` : '';
+    return `<tr>
+      <td style="padding:6px 8px;border-bottom:1px solid #eee">${esc(li.description)}${detail}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right">${formatCurrency(li.amount, currency)}</td>
+    </tr>`;
+  }).join('');
 
   let bodyHtml: string;
   if (isRetainer && retainerLine) {
@@ -115,6 +126,7 @@ function buildPrintHtml(
       <td style="padding:6px 8px;border-bottom:1px solid #eee">${esc(retainerLine.description)}</td>
       <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right">${esc(retainerLine.amount)}</td>
     </tr>
+    ${lineItemRows}
   </tbody>
   <tfoot><tr>
     <td style="font-weight:600;border-top:2px solid #ddd;padding:8px">Total</td>
@@ -136,10 +148,21 @@ function buildPrintHtml(
         </tr>`);
       }
     }
+    // Add line items as separate rows (span hours column)
+    const liRows = (lineItems || []).map((li) => {
+      const qtyStr = li.quantity ? `${li.quantity}` : '';
+      const upStr = li.unitPrice ? formatCurrency(li.unitPrice, currency) : '';
+      const detail = qtyStr && upStr ? ` (${qtyStr} × ${upStr})` : '';
+      return `<tr>
+        <td style="padding:6px 8px;border-bottom:1px solid #eee">${esc(li.description)}${detail}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right"></td>
+        <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right">${formatCurrency(li.amount, currency)}</td>
+      </tr>`;
+    }).join('');
     bodyHtml = `
 <table>
   <thead><tr><th>Description</th><th style="text-align:right">Hours</th><th style="text-align:right">Amount</th></tr></thead>
-  <tbody>${rows.join('')}</tbody>
+  <tbody>${rows.join('')}${liRows}</tbody>
   <tfoot><tr>
     <td style="font-weight:600;border-top:2px solid #ddd;padding:8px">Total</td>
     <td style="font-weight:600;border-top:2px solid #ddd;padding:8px;text-align:right">${esc(totalHoursStr)}</td>
@@ -230,6 +253,40 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
   const [showPaidPicker, setShowPaidPicker] = useState(false);
   const [paidDateInput, setPaidDateInput] = useState(today());
   const [paymentNoteInput, setPaymentNoteInput] = useState('');
+  const [editingLineItems, setEditingLineItems] = useState(false);
+  const [draftLineItems, setDraftLineItems] = useState<LineItem[]>(invoice.lineItems || []);
+
+  function addLineItem() {
+    setDraftLineItems((prev) => [...prev, { id: crypto.randomUUID(), description: '', amount: 0 }]);
+    if (!editingLineItems) setEditingLineItems(true);
+  }
+
+  function updateLineItem(id: string, field: keyof LineItem, value: string | number) {
+    setDraftLineItems((prev) => prev.map((li) => li.id === id ? { ...li, [field]: value } : li));
+  }
+
+  function removeLineItem(id: string) {
+    setDraftLineItems((prev) => prev.filter((li) => li.id !== id));
+  }
+
+  function saveLineItems() {
+    const valid = draftLineItems.filter((li) => li.description.trim() && li.amount);
+    const oldLineItemsTotal = (invoice.lineItems || []).reduce((s, li) => s + li.amount, 0);
+    const newLineItemsTotal = valid.reduce((s, li) => s + li.amount, 0);
+    const newTotal = invoice.totalAmount - oldLineItemsTotal + newLineItemsTotal;
+    saveInvoice({
+      ...invoice,
+      lineItems: valid.length > 0 ? valid : undefined,
+      totalAmount: newTotal,
+      updatedAt: new Date().toISOString(),
+    });
+    setEditingLineItems(false);
+  }
+
+  function cancelLineItemEdit() {
+    setDraftLineItems(invoice.lineItems || []);
+    setEditingLineItems(false);
+  }
 
   async function updateStatus(status: Invoice['status'], paidDate?: string, paymentNote?: string) {
     let exchangeRateToUSD = invoice.exchangeRateToUSD;
@@ -285,6 +342,7 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
       !!company?.vatReverseCharge,
       retainerLine,
       invoice.notes,
+      invoice.lineItems,
     );
 
     const win = window.open('', '_blank');
@@ -310,6 +368,7 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
       !!company?.vatReverseCharge,
       retainerLine,
       invoice.notes,
+      invoice.lineItems,
     );
   }
 
@@ -351,8 +410,17 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
             <tbody className="divide-y">
               <tr>
                 <td className="px-3 py-2">Monthly advisory retainer &mdash; {monthLabel}</td>
-                <td className="px-3 py-2 text-right">{formatCurrency(invoice.totalAmount, invoice.currency)}</td>
+                <td className="px-3 py-2 text-right">{formatCurrency(invoice.rateUsed, invoice.currency)}</td>
               </tr>
+              {invoice.lineItems?.map((li) => (
+                <tr key={li.id}>
+                  <td className="px-3 py-2">
+                    {li.description}
+                    {li.quantity && li.unitPrice ? <span className="text-gray-400 ml-1">({li.quantity} × {formatCurrency(li.unitPrice, invoice.currency)})</span> : null}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(li.amount, invoice.currency)}</td>
+                </tr>
+              ))}
             </tbody>
             <tfoot className="bg-gray-50 font-semibold">
               <tr>
@@ -395,6 +463,24 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
                   </td>
                 </tr>
               ))}
+              {invoice.lineItems?.map((li) => (
+                <tr key={li.id} className="border-0">
+                  <td colSpan={3} className="p-0">
+                    <table className="w-full">
+                      <tbody>
+                        <tr className="border-b border-gray-100">
+                          <td className="py-2 px-3">
+                            {li.description}
+                            {li.quantity && li.unitPrice ? <span className="text-gray-400 ml-1">({li.quantity} × {formatCurrency(li.unitPrice, invoice.currency)})</span> : null}
+                          </td>
+                          <td className="py-2 px-3 text-right tabular-nums w-20"></td>
+                          <td className="py-2 px-3 text-right tabular-nums w-28">{formatCurrency(li.amount, invoice.currency)}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </td>
+                </tr>
+              ))}
             </tbody>
             <tfoot className="bg-gray-50 font-semibold">
               <tr>
@@ -406,6 +492,64 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
           </table>
         )}
       </div>
+
+      {invoice.status === 'draft' && (editingLineItems || !(invoice.lineItems && invoice.lineItems.length > 0)) && (
+        <div className="border rounded-md p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-700">Additional Line Items</span>
+            <button onClick={addLineItem} className="text-sm text-blue-600 hover:text-blue-800 font-medium">+ Add</button>
+          </div>
+          {draftLineItems.length > 0 && (
+            <div className="space-y-2">
+              {draftLineItems.map((li) => (
+                <div key={li.id} className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="Description"
+                    value={li.description}
+                    onChange={(e) => updateLineItem(li.id, 'description', e.target.value)}
+                    className="flex-1 border rounded-md px-3 py-1.5 text-sm"
+                  />
+                  <input
+                    type="number"
+                    placeholder="Qty"
+                    value={li.quantity ?? ''}
+                    onChange={(e) => updateLineItem(li.id, 'quantity', e.target.value ? Number(e.target.value) : 0)}
+                    className="w-16 border rounded-md px-2 py-1.5 text-sm text-right"
+                  />
+                  <input
+                    type="number"
+                    placeholder="Unit price"
+                    value={li.unitPrice ?? ''}
+                    onChange={(e) => {
+                      const up = e.target.value ? Number(e.target.value) : 0;
+                      updateLineItem(li.id, 'unitPrice', up);
+                      const qty = li.quantity || 1;
+                      if (up) updateLineItem(li.id, 'amount', qty * up);
+                    }}
+                    className="w-24 border rounded-md px-2 py-1.5 text-sm text-right"
+                  />
+                  <input
+                    type="number"
+                    placeholder="Amount"
+                    value={li.amount || ''}
+                    onChange={(e) => updateLineItem(li.id, 'amount', e.target.value ? Number(e.target.value) : 0)}
+                    className="w-24 border rounded-md px-2 py-1.5 text-sm text-right"
+                    step="0.01"
+                  />
+                  <button onClick={() => removeLineItem(li.id)} className="text-red-400 hover:text-red-600 text-sm px-1">✕</button>
+                </div>
+              ))}
+              <div className="flex justify-end gap-2 pt-1">
+                {(invoice.lineItems && invoice.lineItems.length > 0) && (
+                  <button onClick={cancelLineItemEdit} className="text-sm text-gray-500 hover:text-gray-700">Cancel</button>
+                )}
+                <button onClick={saveLineItems} className="text-sm bg-blue-600 text-white px-3 py-1 rounded-md hover:bg-blue-700">Save Line Items</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {rateWarning && (
         <p className="text-xs text-amber-600 bg-amber-50 px-3 py-2 rounded-md">{rateWarning}</p>

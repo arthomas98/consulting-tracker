@@ -1,4 +1,4 @@
-import type { Invoice, Currency } from '../types';
+import type { Invoice, Currency, LineItem } from '../types';
 import type { BusinessProfile } from './storage';
 
 interface WeekLine {
@@ -27,6 +27,7 @@ export async function generateInvoiceDocx(
   vatReverseCharge: boolean,
   retainerLine?: { description: string; amount: string },
   notes?: string,
+  lineItems?: LineItem[],
 ): Promise<void> {
   const {
     Document, Packer, Paragraph, Table, TableRow, TableCell,
@@ -200,6 +201,26 @@ export async function generateInvoiceDocx(
         ],
       }),
     );
+    // Line items
+    if (lineItems) {
+      for (const li of lineItems) {
+        const detail = li.quantity && li.unitPrice ? ` (${li.quantity} × ${fmtCurrency(li.unitPrice, currency)})` : '';
+        tableRows.push(
+          new TableRow({
+            children: [
+              new TableCell({
+                borders: thinBorder,
+                children: [new Paragraph({ children: [new TextRun({ text: li.description + detail, size: 20, font: 'Calibri' })] })],
+              }),
+              new TableCell({
+                borders: thinBorder,
+                children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun({ text: fmtCurrency(li.amount, currency), size: 20, font: 'Calibri' })] })],
+              }),
+            ],
+          }),
+        );
+      }
+    }
     // Totals footer
     tableRows.push(
       new TableRow({
@@ -276,6 +297,30 @@ export async function generateInvoiceDocx(
               new TableCell({
                 borders: thinBorder,
                 children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun({ text: fmtCurrency(week.amount, currency), size: 20, font: 'Calibri' })] })],
+              }),
+            ],
+          }),
+        );
+      }
+    }
+    // Line items
+    if (lineItems) {
+      for (const li of lineItems) {
+        const detail = li.quantity && li.unitPrice ? ` (${li.quantity} × ${fmtCurrency(li.unitPrice, currency)})` : '';
+        tableRows.push(
+          new TableRow({
+            children: [
+              new TableCell({
+                borders: thinBorder,
+                children: [new Paragraph({ children: [new TextRun({ text: li.description + detail, size: 20, font: 'Calibri' })] })],
+              }),
+              new TableCell({
+                borders: thinBorder,
+                children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun({ text: '', size: 20, font: 'Calibri' })] })],
+              }),
+              new TableCell({
+                borders: thinBorder,
+                children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun({ text: fmtCurrency(li.amount, currency), size: 20, font: 'Calibri' })] })],
               }),
             ],
           }),

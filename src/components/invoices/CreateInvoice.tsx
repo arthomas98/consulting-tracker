@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useStorage } from '../../contexts/StorageContext';
-import type { Invoice } from '../../types';
+import type { Invoice, LineItem } from '../../types';
 import { totalHours, totalAmount, isFixedMonthly } from '../../utils/calculations';
 import { formatDate, today, getMonthLabel } from '../../utils/dateUtils';
 import { formatCurrency, formatHours } from '../../utils/formatCurrency';
@@ -17,6 +17,21 @@ export default function CreateInvoice({ onDone }: Props) {
   const [companyId, setCompanyId] = useState(activeCompanies[0]?.id || '');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [retainerMonth, setRetainerMonth] = useState(() => today().substring(0, 7));
+  const [lineItems, setLineItems] = useState<LineItem[]>([]);
+
+  function addLineItem() {
+    setLineItems((prev) => [...prev, { id: crypto.randomUUID(), description: '', amount: 0 }]);
+  }
+
+  function updateLineItem(id: string, field: keyof LineItem, value: string | number) {
+    setLineItems((prev) => prev.map((li) => li.id === id ? { ...li, [field]: value } : li));
+  }
+
+  function removeLineItem(id: string) {
+    setLineItems((prev) => prev.filter((li) => li.id !== id));
+  }
+
+  const lineItemsTotal = lineItems.reduce((sum, li) => sum + (li.amount || 0), 0);
 
   const company = companies.find((c) => c.id === companyId);
   const isRetainer = company ? isFixedMonthly(company) : false;
@@ -62,7 +77,8 @@ export default function CreateInvoice({ onDone }: Props) {
 
     // Validate before allocating invoice number
     if (isRetainer && (retainerMonthExists || !company.monthlyRate)) return;
-    if (!isRetainer && selected.size === 0) return;
+    const hasValidLineItems = lineItems.some((li) => li.description.trim() && li.amount);
+    if (!isRetainer && selected.size === 0 && !hasValidLineItems) return;
 
     const now = new Date().toISOString();
 
@@ -72,6 +88,8 @@ export default function CreateInvoice({ onDone }: Props) {
     // Increment company's next invoice number
     saveCompany({ ...company, nextInvoiceNumber: nextNum + 1, updatedAt: now });
 
+    const validLineItems = lineItems.filter((li) => li.description.trim() && li.amount);
+
     if (isRetainer) {
       const invoice: Invoice = {
         id: crypto.randomUUID(),
@@ -80,18 +98,19 @@ export default function CreateInvoice({ onDone }: Props) {
         invoiceDate: today(),
         timeEntryIds: [],
         totalHours: 0,
-        totalAmount: company.monthlyRate!,
+        totalAmount: company.monthlyRate! + lineItemsTotal,
         currency: company.currency,
         rateUsed: company.monthlyRate!,
         status: 'draft',
         billingType: 'fixed_monthly',
         retainerMonth,
+        lineItems: validLineItems.length > 0 ? validLineItems : undefined,
         createdAt: now,
         updatedAt: now,
       };
       saveInvoice(invoice);
     } else {
-      if (selected.size === 0) return;
+      if (selected.size === 0 && validLineItems.length === 0) return;
       const entries = uninvoicedEntries.filter((e) => selected.has(e.id));
       const hours = totalHours(entries);
       const amount = totalAmount(entries, company.hourlyRate);
@@ -102,10 +121,11 @@ export default function CreateInvoice({ onDone }: Props) {
         invoiceDate: today(),
         timeEntryIds: entries.map((e) => e.id),
         totalHours: hours,
-        totalAmount: amount,
+        totalAmount: amount + lineItemsTotal,
         currency: company.currency,
         rateUsed: company.hourlyRate,
         status: 'draft',
+        lineItems: validLineItems.length > 0 ? validLineItems : undefined,
         createdAt: now,
         updatedAt: now,
       };
@@ -195,9 +215,15 @@ export default function CreateInvoice({ onDone }: Props) {
                     <span>Rate:</span>
                     <span>{formatCurrency(company.hourlyRate, company.currency)}/hr</span>
                   </div>
-                  <div className="flex justify-between font-semibold border-t mt-2 pt-2">
+                  {lineItemsTotal > 0 && (
+                    <div className="flex justify-between border-t mt-2 pt-2">
+                      <span>Line items:</span>
+                      <span className="font-medium">{formatCurrency(lineItemsTotal, company.currency)}</span>
+                    </div>
+                  )}
+                  <div className={`flex justify-between font-semibold ${lineItemsTotal > 0 ? 'mt-1' : 'border-t mt-2 pt-2'}`}>
                     <span>Total amount:</span>
-                    <span>{formatCurrency(selAmount, company.currency)}</span>
+                    <span>{formatCurrency(selAmount + lineItemsTotal, company.currency)}</span>
                   </div>
                 </div>
               )}
@@ -206,11 +232,69 @@ export default function CreateInvoice({ onDone }: Props) {
         </>
       )}
 
+      {/* Additional Line Items */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <label className="block text-sm font-medium text-gray-700">Additional Line Items</label>
+          <button onClick={addLineItem} className="text-sm text-blue-600 hover:text-blue-800 font-medium">
+            + Add Line Item
+          </button>
+        </div>
+        {lineItems.length > 0 && (
+          <div className="space-y-2">
+            {lineItems.map((li) => (
+              <div key={li.id} className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Description"
+                  value={li.description}
+                  onChange={(e) => updateLineItem(li.id, 'description', e.target.value)}
+                  className="flex-1 border rounded-md px-3 py-1.5 text-sm"
+                />
+                <input
+                  type="number"
+                  placeholder="Qty"
+                  value={li.quantity ?? ''}
+                  onChange={(e) => updateLineItem(li.id, 'quantity', e.target.value ? Number(e.target.value) : 0)}
+                  className="w-16 border rounded-md px-2 py-1.5 text-sm text-right"
+                />
+                <input
+                  type="number"
+                  placeholder="Unit price"
+                  value={li.unitPrice ?? ''}
+                  onChange={(e) => {
+                    const up = e.target.value ? Number(e.target.value) : 0;
+                    updateLineItem(li.id, 'unitPrice', up);
+                    const qty = li.quantity || 1;
+                    if (up) updateLineItem(li.id, 'amount', qty * up);
+                  }}
+                  className="w-24 border rounded-md px-2 py-1.5 text-sm text-right"
+                />
+                <input
+                  type="number"
+                  placeholder="Amount"
+                  value={li.amount || ''}
+                  onChange={(e) => updateLineItem(li.id, 'amount', e.target.value ? Number(e.target.value) : 0)}
+                  className="w-24 border rounded-md px-2 py-1.5 text-sm text-right"
+                  step="0.01"
+                />
+                <button onClick={() => removeLineItem(li.id)} className="text-red-400 hover:text-red-600 text-sm px-1">✕</button>
+              </div>
+            ))}
+            {lineItemsTotal > 0 && company && (
+              <div className="text-sm text-right text-gray-600">
+                Line items subtotal: {formatCurrency(lineItemsTotal, company.currency)}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       <div className="flex justify-end gap-2 pt-2 border-t">
         <button onClick={onDone} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">Cancel</button>
         <button
           onClick={handleCreate}
-          disabled={isRetainer ? (retainerMonthExists || !company?.monthlyRate) : selected.size === 0}
+          disabled={isRetainer ? (retainerMonthExists || !company?.monthlyRate) : (selected.size === 0 && !lineItems.some((li) => li.description.trim() && li.amount))}
           className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Create Invoice
