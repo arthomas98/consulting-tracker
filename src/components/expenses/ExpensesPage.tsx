@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useStorage } from '../../contexts/StorageContext';
+import { useCompanies, useExpenses as useExpensesCtx } from '../../contexts/StorageContext';
 import type { Expense, ExpenseCategory, Currency } from '../../types';
 import { EXPENSE_CATEGORY_LABELS } from '../../types';
 import { formatDate, today, startOfYear, endOfYear, isInRange } from '../../utils/dateUtils';
@@ -24,7 +24,8 @@ const emptyExpense = (): Omit<Expense, 'id' | 'createdAt' | 'updatedAt'> => ({
 });
 
 export default function ExpensesPage() {
-  const { companies, expenses, saveExpense, deleteExpense } = useStorage();
+  const { companies } = useCompanies();
+  const { expenses, saveExpense, deleteExpense } = useExpensesCtx();
   const [editing, setEditing] = useState<Expense | null>(null);
   const [isNew, setIsNew] = useState(false);
   const [filterCategory, setFilterCategory] = useState('');

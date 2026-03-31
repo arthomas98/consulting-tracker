@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { useStorage } from '../../contexts/StorageContext';
+import { useCompanies, useTimeEntries, useInvoices } from '../../contexts/StorageContext';
 import { totalsByCurrency, entryAmount, isFixedMonthly } from '../../utils/calculations';
 import { startOfMonth, endOfMonth, startOfYear, endOfYear, today, isInRange, getISOWeek, getWeekLabel, getMonthIndex, shortMonthName, formatDate, getMonthLabel, daysSince } from '../../utils/dateUtils';
 import { formatCurrency, formatCurrencyShort, formatHours } from '../../utils/formatCurrency';
@@ -10,6 +10,14 @@ import TimeEntryForm from '../time/TimeEntryForm';
 import Modal from '../shared/Modal';
 
 const CHANGELOG: { version: string; date: string; changes: string[] }[] = [
+  {
+    version: '1.5',
+    date: '2026-03-31',
+    changes: [
+      'Performance: split monolithic StorageContext into per-entity contexts — saving a time entry no longer re-renders the Expenses, Companies, or Invoices pages',
+      'Performance: paginated Time Entries list view (50 entries at a time with "Show more") to prevent DOM bloat at scale',
+    ],
+  },
   {
     version: '1.4.3',
     date: '2026-03-14',
@@ -120,7 +128,9 @@ const CHANGELOG: { version: string; date: string; changes: string[] }[] = [
 ];
 
 export default function DashboardPage() {
-  const { companies, timeEntries, invoices, saveTimeEntry } = useStorage();
+  const { companies } = useCompanies();
+  const { timeEntries, saveTimeEntry } = useTimeEntries();
+  const { invoices } = useInvoices();
   const [quickEntryKey, setQuickEntryKey] = useState(0);
   const [showChangelog, setShowChangelog] = useState(false);
   const [chartOpen, setChartOpen] = useState(false);

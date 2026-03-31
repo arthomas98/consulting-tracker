@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useStorage } from '../../contexts/StorageContext';
+import { useCompanies, useProjects, useTimeEntries } from '../../contexts/StorageContext';
 import type { TimeEntry } from '../../types';
 import { parseHoursInput, isFixedMonthly } from '../../utils/calculations';
 import { today } from '../../utils/dateUtils';
@@ -13,7 +13,9 @@ interface TimeEntryFormProps {
 type EntryMode = 'hours' | 'amount';
 
 export default function TimeEntryForm({ initial, onDone, compact }: TimeEntryFormProps) {
-  const { companies, projects, saveTimeEntry } = useStorage();
+  const { companies } = useCompanies();
+  const { projects } = useProjects();
+  const { saveTimeEntry } = useTimeEntries();
   const activeCompanies = companies.filter((c) => c.isActive);
   const initialCompany = initial ? companies.find((c) => c.id === initial.companyId) : undefined;
   const dropdownCompanies = initialCompany && !initialCompany.isActive

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useStorage } from '../../contexts/StorageContext';
+import { useCompanies, useProjects, useTimeEntries, useInvoices, useProfile } from '../../contexts/StorageContext';
 import type { Invoice, TimeEntry, Currency, LineItem } from '../../types';
 import type { Project } from '../../types';
 import type { BusinessProfile } from '../../utils/storage';
@@ -282,7 +282,11 @@ ${bankHtml}
 }
 
 export default function InvoiceDetail({ invoice, onClose }: Props) {
-  const { companies, projects, timeEntries, saveInvoice, profile } = useStorage();
+  const { companies } = useCompanies();
+  const { projects } = useProjects();
+  const { timeEntries } = useTimeEntries();
+  const { saveInvoice } = useInvoices();
+  const { profile } = useProfile();
   const company = companies.find((c) => c.id === invoice.companyId);
   const projectMap = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects]);
 

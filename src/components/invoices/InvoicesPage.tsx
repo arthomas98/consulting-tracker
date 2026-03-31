@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useStorage } from '../../contexts/StorageContext';
+import { useCompanies, useInvoices } from '../../contexts/StorageContext';
 import type { Invoice } from '../../types';
 import { formatDate, daysSince, today } from '../../utils/dateUtils';
 import { formatCurrency, formatHours } from '../../utils/formatCurrency';
@@ -11,7 +11,8 @@ import InvoiceDetail from './InvoiceDetail';
 const statusColor: Record<string, string> = { draft: 'gray', sent: 'yellow', paid: 'green' };
 
 export default function InvoicesPage() {
-  const { companies, invoices, deleteInvoice, saveInvoice } = useStorage();
+  const { companies } = useCompanies();
+  const { invoices, deleteInvoice, saveInvoice } = useInvoices();
   const [creating, setCreating] = useState(false);
   const [viewing, setViewing] = useState<Invoice | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('');

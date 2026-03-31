@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { useStorage } from '../../contexts/StorageContext';
+import { useState, useMemo, useEffect } from 'react';
+import { useCompanies, useProjects, useTimeEntries, useInvoices } from '../../contexts/StorageContext';
 import type { TimeEntry } from '../../types';
 import { getEntryPaymentStatus, isFixedMonthly } from '../../utils/calculations';
 import { formatDate, today, getWeekDates } from '../../utils/dateUtils';
@@ -18,7 +18,10 @@ const statusColors: Record<string, string> = {
 };
 
 export default function TimePage() {
-  const { companies, projects, timeEntries, invoices, saveTimeEntry, deleteTimeEntry } = useStorage();
+  const { companies } = useCompanies();
+  const { projects } = useProjects();
+  const { timeEntries, saveTimeEntry, deleteTimeEntry } = useTimeEntries();
+  const { invoices } = useInvoices();
   const [editing, setEditing] = useState<TimeEntry | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [weekOf, setWeekOf] = useState(today());
@@ -26,17 +29,23 @@ export default function TimePage() {
   const [view, setView] = useState<'week' | 'list'>('list');
   const [payingEntryId, setPayingEntryId] = useState<string | null>(null);
   const [paymentNoteInput, setPaymentNoteInput] = useState('');
+  const [visibleCount, setVisibleCount] = useState(50);
 
   const companyMap = useMemo(() => new Map(companies.map((c) => [c.id, c])), [companies]);
   const projectMap = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects]);
   const weekDates = useMemo(() => getWeekDates(weekOf), [weekOf]);
   const activeCompanies = companies.filter((c) => c.isActive);
 
+  useEffect(() => { setVisibleCount(50); }, [filterCompany]);
+
   const filteredEntries = useMemo(() => {
     let entries = [...timeEntries];
     if (filterCompany) entries = entries.filter((e) => e.companyId === filterCompany);
     return entries.sort((a, b) => b.date.localeCompare(a.date));
   }, [timeEntries, filterCompany]);
+
+  const visibleEntries = useMemo(() => filteredEntries.slice(0, visibleCount), [filteredEntries, visibleCount]);
+  const hasMore = filteredEntries.length > visibleCount;
 
   const weekEntries = useMemo(() => {
     const start = weekDates[0];
@@ -191,9 +200,21 @@ export default function TimePage() {
           {filteredEntries.length === 0 ? (
             <p className="text-gray-500 text-center py-12">No time entries yet.</p>
           ) : (
-            filteredEntries.map((entry) => (
-              <div key={entry.id}>{renderEntry(entry, true)}</div>
-            ))
+            <>
+              {visibleEntries.map((entry) => (
+                <div key={entry.id}>{renderEntry(entry, true)}</div>
+              ))}
+              {hasMore && (
+                <div className="text-center py-3">
+                  <button
+                    onClick={() => setVisibleCount((c) => c + 50)}
+                    className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+                  >
+                    Show more ({filteredEntries.length - visibleCount} remaining)
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}

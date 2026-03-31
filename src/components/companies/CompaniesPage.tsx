@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useStorage } from '../../contexts/StorageContext';
+import { useCompanies, useProjects } from '../../contexts/StorageContext';
 import type { Company, Currency, BillingType } from '../../types';
 import { formatCurrency } from '../../utils/formatCurrency';
 import Modal from '../shared/Modal';
@@ -21,7 +21,8 @@ const emptyCo: Omit<Company, 'id' | 'createdAt' | 'updatedAt'> = {
 };
 
 export default function CompaniesPage() {
-  const { companies, projects, saveCompany, saveProject } = useStorage();
+  const { companies, saveCompany } = useCompanies();
+  const { projects, saveProject } = useProjects();
   const [editing, setEditing] = useState<Company | null>(null);
   const [showInactive, setShowInactive] = useState(false);
   const [isNew, setIsNew] = useState(false);

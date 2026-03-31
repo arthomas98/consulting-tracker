@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useStorage } from '../../contexts/StorageContext';
+import { useCompanies, useProjects, useTimeEntries, useInvoices } from '../../contexts/StorageContext';
 import type { Invoice, LineItem, InvoiceDetailLevel } from '../../types';
 import { totalHours, totalAmount, isFixedMonthly } from '../../utils/calculations';
 import { formatDate, today, getMonthLabel } from '../../utils/dateUtils';
@@ -10,7 +10,10 @@ interface Props {
 }
 
 export default function CreateInvoice({ onDone }: Props) {
-  const { companies, projects, timeEntries, invoices, saveInvoice, saveCompany } = useStorage();
+  const { companies, saveCompany } = useCompanies();
+  const { projects } = useProjects();
+  const { timeEntries } = useTimeEntries();
+  const { invoices, saveInvoice } = useInvoices();
   const projectMap = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects]);
   const activeCompanies = companies.filter((c) => c.isActive && c.invoiceRequired);
 

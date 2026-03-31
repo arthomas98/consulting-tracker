@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useStorage } from '../../contexts/StorageContext';
+import { useCompanies, useProjects, useTimeEntries, useInvoices } from '../../contexts/StorageContext';
 import { totalsByCurrency, entryAmount, getEntryPaymentStatus, isFixedMonthly } from '../../utils/calculations';
 import { startOfMonth, endOfMonth, startOfYear, endOfYear, isInRange, formatDate, daysSince } from '../../utils/dateUtils';
 import { formatCurrency, formatHours } from '../../utils/formatCurrency';
@@ -20,7 +20,10 @@ const statusColors: Record<string, string> = {
 };
 
 export default function ReportsPage() {
-  const { companies, projects, timeEntries, invoices } = useStorage();
+  const { companies } = useCompanies();
+  const { projects } = useProjects();
+  const { timeEntries } = useTimeEntries();
+  const { invoices } = useInvoices();
   const [tab, setTab] = useState<Tab>('summary');
   const [period, setPeriod] = useState<Period>('year');
   const [companyFilter, setCompanyFilter] = useState('');
