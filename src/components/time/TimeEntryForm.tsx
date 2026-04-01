@@ -25,6 +25,7 @@ export default function TimeEntryForm({ initial, onDone, compact }: TimeEntryFor
   const [companyId, setCompanyId] = useState(initial?.companyId || activeCompanies[0]?.id || '');
   const [projectId, setProjectId] = useState(initial?.projectId || '');
   const [date, setDate] = useState(initial?.date || today());
+  const [dateManuallyChanged, setDateManuallyChanged] = useState(!!initial);
   const [mode, setMode] = useState<EntryMode>(initial?.fixedAmount != null ? 'amount' : 'hours');
   const [hoursInput, setHoursInput] = useState(initial ? String(initial.hours) : '');
   const [amountInput, setAmountInput] = useState(initial?.fixedAmount != null ? String(initial.fixedAmount) : '');
@@ -67,11 +68,12 @@ export default function TimeEntryForm({ initial, onDone, compact }: TimeEntryFor
     }
 
     const now = new Date().toISOString();
+    const effectiveDate = dateManuallyChanged ? date : today();
     const entry: TimeEntry = {
       id: initial?.id || crypto.randomUUID(),
       companyId,
       projectId: projectId || undefined,
-      date,
+      date: effectiveDate,
       hours,
       fixedAmount,
       description: description.trim(),
@@ -120,7 +122,7 @@ export default function TimeEntryForm({ initial, onDone, compact }: TimeEntryFor
             {companyProjects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         )}
-        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="border rounded-md px-2 py-1.5 text-sm" />
+        <input type="date" value={date} onChange={(e) => { setDate(e.target.value); setDateManuallyChanged(true); }} className="border rounded-md px-2 py-1.5 text-sm" />
         {isRetainer ? (
           <input
             type="text"
@@ -198,7 +200,7 @@ export default function TimeEntryForm({ initial, onDone, compact }: TimeEntryFor
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Date *</label>
-              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm" />
+              <input type="date" value={date} onChange={(e) => { setDate(e.target.value); setDateManuallyChanged(true); }} className="w-full border rounded-md px-3 py-2 text-sm" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Hours <span className="text-gray-400 font-normal">(optional, for your records)</span></label>
@@ -224,7 +226,7 @@ export default function TimeEntryForm({ initial, onDone, compact }: TimeEntryFor
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Date *</label>
-              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm" />
+              <input type="date" value={date} onChange={(e) => { setDate(e.target.value); setDateManuallyChanged(true); }} className="w-full border rounded-md px-3 py-2 text-sm" />
             </div>
             {mode === 'hours' ? (
               <div>
