@@ -1,5 +1,9 @@
+function toLocalDateString(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 export function today(): string {
-  return new Date().toISOString().split('T')[0];
+  return toLocalDateString(new Date());
 }
 
 export function formatDate(iso: string): string {
@@ -42,7 +46,7 @@ export function getWeekDates(refDate: string): string[] {
   for (let i = 0; i < 7; i++) {
     const dd = new Date(monday);
     dd.setDate(monday.getDate() + i);
-    dates.push(dd.toISOString().split('T')[0]);
+    dates.push(toLocalDateString(dd));
   }
   return dates;
 }
@@ -84,7 +88,7 @@ export function getMondayDate(dateStr: string): string {
   const day = d.getDay();
   const monday = new Date(d);
   monday.setDate(d.getDate() - ((day + 6) % 7));
-  return monday.toISOString().split('T')[0];
+  return toLocalDateString(monday);
 }
 
 export function getMonthIndex(dateStr: string): number {
