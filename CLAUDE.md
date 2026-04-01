@@ -112,6 +112,13 @@ npm run build # Production build
 - Type declarations: `src/google.d.ts`
 - Google API scripts loaded in `index.html` (GIS + GAPI)
 
+## Versioning
+Version and changelog on every change. Before staging files for commit, bump the version display
+and add a changelog entry in `src/components/dashboard/DashboardPage.tsx` (both the `CHANGELOG`
+array and the `v1.x.x` button text) describing what changed. Never commit code changes without the
+version bump in the same commit. Increment the minor version (e.g., 1.5.0 → 1.5.1) for features/fixes.
+This is non-negotiable.
+
 ## Git & GitHub
 - Repo: https://github.com/arthomas98/consulting-tracker (public)
 - Also synced via Dropbox across machines
