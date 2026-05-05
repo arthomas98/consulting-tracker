@@ -524,10 +524,12 @@ export async function generateInvoiceDocx(
         border: { top: { style: BorderStyle.SINGLE, size: 1, color: 'DDDDDD', space: 8 } },
         children: [new TextRun({ text: 'Payment Information', bold: true, size: 20, color: '555555', font: 'Calibri' })],
       }),
-      new Paragraph({
-        spacing: { before: 100 },
-        children: [new TextRun({ text: bankItems.join('    |    '), size: 20, color: '555555', font: 'Calibri' })],
-      }),
+      ...bankItems.map((item, idx) =>
+        new Paragraph({
+          spacing: { before: idx === 0 ? 100 : 40 },
+          children: [new TextRun({ text: item, size: 20, color: '555555', font: 'Calibri' })],
+        })
+      ),
     );
   }
 

@@ -234,14 +234,14 @@ function buildPrintHtml(
     </div>` : '';
 
   const bankFields: string[] = [];
-  if (profile.ein) bankFields.push(`<span>EIN: ${esc(profile.ein)}</span>`);
-  if (profile.bankName) bankFields.push(`<span>Bank: ${esc(profile.bankName)}</span>`);
-  if (profile.accountName) bankFields.push(`<span>Account Name: ${esc(profile.accountName)}</span>`);
-  if (profile.routingNumber) bankFields.push(`<span>Routing #: ${esc(profile.routingNumber)}</span>`);
-  if (profile.accountNumber) bankFields.push(`<span>Account #: ${esc(profile.accountNumber)}</span>`);
-  if (profile.swiftCode) bankFields.push(`<span>SWIFT: ${esc(profile.swiftCode)}</span>`);
+  if (profile.ein) bankFields.push(`<div>EIN: ${esc(profile.ein)}</div>`);
+  if (profile.bankName) bankFields.push(`<div>Bank: ${esc(profile.bankName)}</div>`);
+  if (profile.accountName) bankFields.push(`<div>Account Name: ${esc(profile.accountName)}</div>`);
+  if (profile.routingNumber) bankFields.push(`<div>Routing #: ${esc(profile.routingNumber)}</div>`);
+  if (profile.accountNumber) bankFields.push(`<div>Account #: ${esc(profile.accountNumber)}</div>`);
+  if (profile.swiftCode) bankFields.push(`<div>SWIFT: ${esc(profile.swiftCode)}</div>`);
   const bankHtml = bankFields.length > 0
-    ? `<div style="margin-top:20px;padding-top:16px;border-top:1px solid #ddd;font-size:13px;color:#555"><strong>Payment Information</strong><div style="margin-top:6px;display:flex;gap:20px;flex-wrap:wrap">${bankFields.join('')}</div></div>`
+    ? `<div style="margin-top:20px;padding-top:16px;border-top:1px solid #ddd;font-size:13px;color:#555"><strong>Payment Information</strong><div style="margin-top:6px;line-height:1.6">${bankFields.join('')}</div></div>`
     : '';
 
   return `<!DOCTYPE html>
