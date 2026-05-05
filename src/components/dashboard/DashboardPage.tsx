@@ -11,6 +11,13 @@ import Modal from '../shared/Modal';
 
 const CHANGELOG: { version: string; date: string; changes: string[] }[] = [
   {
+    version: '1.5.2',
+    date: '2026-05-05',
+    changes: [
+      'Per-company VAT notice text — override the default EU directive language on a per-client basis (e.g., for UK or non-EU jurisdictions); textarea appears under the VAT reverse charge toggle on the company form, default text is used when blank',
+    ],
+  },
+  {
     version: '1.5.1',
     date: '2026-04-01',
     changes: [
@@ -495,7 +502,7 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">Dashboard</h2>
-        <button onClick={() => setShowChangelog(true)} className="text-xs text-gray-400 hover:text-blue-600 transition-colors">v1.5.1</button>
+        <button onClick={() => setShowChangelog(true)} className="text-xs text-gray-400 hover:text-blue-600 transition-colors">v1.5.2</button>
       </div>
       <p className="text-sm text-gray-500 -mt-4">
         New here? Check out the <Link to="/getting-started" className="text-blue-600 hover:text-blue-800 font-medium">Getting Started</Link> guide.

@@ -33,6 +33,7 @@ export async function generateInvoiceDocx(
   profile: BusinessProfile,
   isRetainer: boolean,
   vatReverseCharge: boolean,
+  vatNoticeText: string | undefined,
   retainerLine?: { description: string; amount: string },
   notes?: string,
   lineItems?: LineItem[],
@@ -480,7 +481,8 @@ export async function generateInvoiceDocx(
   // --- VAT Reverse Charge Notice ---
   const vatSection: InstanceType<typeof Paragraph>[] = [];
   if (vatReverseCharge) {
-    const vatText = `Reverse charge applies — recipient is liable for VAT under Articles 44 and 196 of EU VAT Directive 2006/112/EC.${profile.ein ? ` Supplier Tax ID (EIN): ${profile.ein}` : ''}`;
+    const baseVatText = (vatNoticeText && vatNoticeText.trim()) || 'Reverse charge applies — recipient is liable for VAT under Articles 44 and 196 of EU VAT Directive 2006/112/EC.';
+    const vatText = `${baseVatText}${profile.ein ? ` Supplier Tax ID (EIN): ${profile.ein}` : ''}`;
     vatSection.push(
       new Paragraph({
         spacing: { before: 300 },

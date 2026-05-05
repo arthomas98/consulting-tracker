@@ -211,6 +211,19 @@ export default function CompaniesPage() {
                 />
                 <label htmlFor="vatReverseCharge" className="text-sm text-gray-700">EU/UK client — VAT reverse charge applies</label>
               </div>
+              {editing.vatReverseCharge && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">VAT Notice Text</label>
+                  <textarea
+                    value={editing.vatNoticeText || ''}
+                    onChange={(e) => setEditing({ ...editing, vatNoticeText: e.target.value })}
+                    rows={3}
+                    placeholder="Reverse charge applies — recipient is liable for VAT under Articles 44 and 196 of EU VAT Directive 2006/112/EC."
+                    className="w-full border rounded-md px-3 py-2 text-sm"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">Leave blank to use the default EU directive text. Supplier Tax ID (EIN) is appended automatically when present.</p>
+                </div>
+              )}
             </div>
             {editing.invoiceRequired && (
               <div>

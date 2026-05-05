@@ -122,6 +122,7 @@ function buildPrintHtml(
   profile: BusinessProfile,
   isRetainer: boolean,
   vatReverseCharge: boolean,
+  vatNoticeText: string | undefined,
   retainerLine?: { description: string; amount: string },
   notes?: string,
   lineItems?: LineItem[],
@@ -275,7 +276,7 @@ function buildPrintHtml(
 </div>
 ${bodyHtml}
 ${notes ? `<div class="notes"><strong>Notes:</strong> ${esc(notes)}</div>` : ''}
-${vatReverseCharge ? `<div style="margin-top:16px;padding:12px 16px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;font-size:13px;color:#0369a1"><strong>VAT Notice:</strong> Reverse charge applies — recipient is liable for VAT under Articles 44 and 196 of EU VAT Directive 2006/112/EC.${profile.ein ? ` Supplier Tax ID (EIN): ${esc(profile.ein)}` : ''}</div>` : ''}
+${vatReverseCharge ? `<div style="margin-top:16px;padding:12px 16px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;font-size:13px;color:#0369a1"><strong>VAT Notice:</strong> ${esc((vatNoticeText && vatNoticeText.trim()) || 'Reverse charge applies — recipient is liable for VAT under Articles 44 and 196 of EU VAT Directive 2006/112/EC.')}${profile.ein ? ` Supplier Tax ID (EIN): ${esc(profile.ein)}` : ''}</div>` : ''}
 ${bankHtml}
 <script>window.onload=function(){window.print()}</script>
 </body></html>`;
@@ -401,6 +402,7 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
       profile,
       isRetainer,
       !!company?.vatReverseCharge,
+      company?.vatNoticeText,
       retainerLine,
       invoice.notes,
       invoice.lineItems,
@@ -428,6 +430,7 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
       profile,
       isRetainer,
       !!company?.vatReverseCharge,
+      company?.vatNoticeText,
       retainerLine,
       invoice.notes,
       invoice.lineItems,
