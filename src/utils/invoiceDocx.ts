@@ -25,6 +25,7 @@ interface DetailedLine {
 export async function generateInvoiceDocx(
   invoice: Invoice,
   companyName: string,
+  billingAddress: string | undefined,
   groups: ProjectGroup[],
   totalHoursStr: string,
   totalAmountStr: string,
@@ -135,6 +136,11 @@ export async function generateInvoiceDocx(
               new Paragraph({
                 children: [new TextRun({ text: companyName, bold: true, size: 24, font: 'Calibri' })],
               }),
+              ...((billingAddress && billingAddress.trim() ? billingAddress.split('\n') : []).map((line) =>
+                new Paragraph({
+                  children: [new TextRun({ text: line, size: 20, color: '555555', font: 'Calibri' })],
+                })
+              )),
             ],
           }),
           new TableCell({
@@ -504,9 +510,11 @@ export async function generateInvoiceDocx(
   // --- Payment Information ---
   const bankItems: string[] = [];
   if (profile.ein) bankItems.push(`EIN: ${profile.ein}`);
+  if (profile.bankName) bankItems.push(`Bank: ${profile.bankName}`);
+  if (profile.accountName) bankItems.push(`Account Name: ${profile.accountName}`);
   if (profile.routingNumber) bankItems.push(`Routing #: ${profile.routingNumber}`);
-  if (profile.swiftCode) bankItems.push(`SWIFT: ${profile.swiftCode}`);
   if (profile.accountNumber) bankItems.push(`Account #: ${profile.accountNumber}`);
+  if (profile.swiftCode) bankItems.push(`SWIFT: ${profile.swiftCode}`);
 
   const bankSection: InstanceType<typeof Paragraph>[] = [];
   if (bankItems.length > 0) {

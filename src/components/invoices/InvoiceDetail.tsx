@@ -114,6 +114,7 @@ function buildDetailedLines(
 function buildPrintHtml(
   invoice: Invoice,
   companyName: string,
+  billingAddress: string | undefined,
   groups: ProjectGroup[],
   totalHoursStr: string,
   totalAmountStr: string,
@@ -234,9 +235,11 @@ function buildPrintHtml(
 
   const bankFields: string[] = [];
   if (profile.ein) bankFields.push(`<span>EIN: ${esc(profile.ein)}</span>`);
+  if (profile.bankName) bankFields.push(`<span>Bank: ${esc(profile.bankName)}</span>`);
+  if (profile.accountName) bankFields.push(`<span>Account Name: ${esc(profile.accountName)}</span>`);
   if (profile.routingNumber) bankFields.push(`<span>Routing #: ${esc(profile.routingNumber)}</span>`);
-  if (profile.swiftCode) bankFields.push(`<span>SWIFT: ${esc(profile.swiftCode)}</span>`);
   if (profile.accountNumber) bankFields.push(`<span>Account #: ${esc(profile.accountNumber)}</span>`);
+  if (profile.swiftCode) bankFields.push(`<span>SWIFT: ${esc(profile.swiftCode)}</span>`);
   const bankHtml = bankFields.length > 0
     ? `<div style="margin-top:20px;padding-top:16px;border-top:1px solid #ddd;font-size:13px;color:#555"><strong>Payment Information</strong><div style="margin-top:6px;display:flex;gap:20px;flex-wrap:wrap">${bankFields.join('')}</div></div>`
     : '';
@@ -266,6 +269,7 @@ function buildPrintHtml(
   <div class="party">
     <div class="label">Bill To</div>
     <div style="font-weight:600">${esc(companyName)}</div>
+    ${billingAddress && billingAddress.trim() ? `<div style="font-size:13px;color:#555;line-height:1.5;margin-top:2px">${esc(billingAddress).replace(/\n/g, '<br>')}</div>` : ''}
   </div>
   <div class="party" style="text-align:right">
     <div class="label">Invoice Details</div>
@@ -394,6 +398,7 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
     const html = buildPrintHtml(
       invoice,
       companyName,
+      company?.billingAddress,
       grouped,
       totalHoursStr,
       totalAmountStr,
@@ -422,6 +427,7 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
     await generateInvoiceDocx(
       invoice,
       companyName,
+      company?.billingAddress,
       grouped,
       totalHoursStr,
       totalAmountStr,

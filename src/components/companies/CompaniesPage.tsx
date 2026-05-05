@@ -281,6 +281,17 @@ export default function CompaniesPage() {
               </div>
             </div>
             <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Billing Address</label>
+              <textarea
+                value={editing.billingAddress || ''}
+                onChange={(e) => setEditing({ ...editing, billingAddress: e.target.value })}
+                rows={3}
+                placeholder="Street, City, State ZIP, Country"
+                className="w-full border rounded-md px-3 py-2 text-sm"
+              />
+              <p className="text-xs text-gray-400 mt-1">Shown under the company name in the Bill To section of invoices.</p>
+            </div>
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
               <textarea
                 value={editing.notes || ''}

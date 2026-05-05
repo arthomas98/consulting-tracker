@@ -69,6 +69,8 @@ export function profileToRows(profile: BusinessProfile): string[][] {
     ['Routing Number', profile.routingNumber || ''],
     ['SWIFT Code', profile.swiftCode || ''],
     ['Account Number', profile.accountNumber || ''],
+    ['Bank Name', profile.bankName || ''],
+    ['Account Name', profile.accountName || ''],
   ];
 }
 
@@ -202,5 +204,7 @@ export function rowsToProfile(rows: string[][]): BusinessProfile {
     routingNumber: map.get('Routing Number') || undefined,
     swiftCode: map.get('SWIFT Code') || undefined,
     accountNumber: map.get('Account Number') || undefined,
+    bankName: map.get('Bank Name') || undefined,
+    accountName: map.get('Account Name') || undefined,
   };
 }

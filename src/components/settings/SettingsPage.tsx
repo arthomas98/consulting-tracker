@@ -215,6 +215,28 @@ export default function SettingsPage() {
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Bank Name</label>
+                    <input
+                      type="text"
+                      value={editProfile.bankName || ''}
+                      onChange={(e) => setEditProfile({ ...editProfile, bankName: e.target.value })}
+                      placeholder="e.g., Chase Bank"
+                      className="w-full border rounded-md px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Account Name</label>
+                    <input
+                      type="text"
+                      value={editProfile.accountName || ''}
+                      onChange={(e) => setEditProfile({ ...editProfile, accountName: e.target.value })}
+                      placeholder="Beneficiary name on the account"
+                      className="w-full border rounded-md px-3 py-2 text-sm"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Routing #</label>
                     <input
                       type="text"

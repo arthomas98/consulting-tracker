@@ -13,6 +13,7 @@ export interface Company {
   paymentMethod?: string;
   contactName?: string;
   contactEmail?: string;
+  billingAddress?: string;
   notes?: string;
   nextInvoiceNumber?: number;
   vatReverseCharge?: boolean;

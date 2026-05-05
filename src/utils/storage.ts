@@ -9,6 +9,8 @@ export interface BusinessProfile {
   routingNumber?: string;
   swiftCode?: string;
   accountNumber?: string;
+  bankName?: string;
+  accountName?: string;
 }
 
 const KEYS = {
