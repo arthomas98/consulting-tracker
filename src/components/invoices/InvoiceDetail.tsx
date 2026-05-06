@@ -321,6 +321,39 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
   const [paymentNoteInput, setPaymentNoteInput] = useState('');
   const [editingLineItems, setEditingLineItems] = useState(false);
   const [draftLineItems, setDraftLineItems] = useState<LineItem[]>(invoice.lineItems || []);
+  const [editingBillTo, setEditingBillTo] = useState(false);
+  const [draftBillToName, setDraftBillToName] = useState(invoice.billToNameOverride ?? '');
+  const [draftBillToAddress, setDraftBillToAddress] = useState(invoice.billToAddressOverride ?? '');
+
+  function startEditBillTo() {
+    setDraftBillToName(invoice.billToNameOverride ?? '');
+    setDraftBillToAddress(invoice.billToAddressOverride ?? '');
+    setEditingBillTo(true);
+  }
+
+  function saveBillTo() {
+    const nameTrimmed = draftBillToName.trim();
+    const addressTrimmed = draftBillToAddress.trim();
+    saveInvoice({
+      ...invoice,
+      billToNameOverride: nameTrimmed ? nameTrimmed : undefined,
+      billToAddressOverride: addressTrimmed ? addressTrimmed : undefined,
+      updatedAt: new Date().toISOString(),
+    });
+    setEditingBillTo(false);
+  }
+
+  function resetBillTo() {
+    saveInvoice({
+      ...invoice,
+      billToNameOverride: undefined,
+      billToAddressOverride: undefined,
+      updatedAt: new Date().toISOString(),
+    });
+    setDraftBillToName('');
+    setDraftBillToAddress('');
+    setEditingBillTo(false);
+  }
 
   function addLineItem() {
     setDraftLineItems((prev) => [...prev, { id: crypto.randomUUID(), description: '', amount: 0 }]);
@@ -383,8 +416,13 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
       amount: formatCurrency(invoice.totalAmount, invoice.currency),
     } : undefined;
 
+    const billToName = (invoice.billToNameOverride && invoice.billToNameOverride.trim()) || company?.name || 'Unknown';
+    const billToAddress = invoice.billToAddressOverride != null
+      ? invoice.billToAddressOverride
+      : company?.billingAddress;
     return {
-      companyName: company?.name || 'Unknown',
+      companyName: billToName,
+      billToAddress,
       totalHoursStr: formatHours(invoice.totalHours),
       totalAmountStr: formatCurrency(invoice.totalAmount, invoice.currency),
       rateStr: formatCurrency(invoice.rateUsed, invoice.currency),
@@ -393,12 +431,12 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
   }
 
   function handlePrint() {
-    const { companyName, totalHoursStr, totalAmountStr, rateStr, retainerLine } = getInvoiceData();
+    const { companyName, billToAddress, totalHoursStr, totalAmountStr, rateStr, retainerLine } = getInvoiceData();
 
     const html = buildPrintHtml(
       invoice,
       companyName,
-      company?.billingAddress,
+      billToAddress,
       grouped,
       totalHoursStr,
       totalAmountStr,
@@ -422,12 +460,12 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
   }
 
   async function handleSaveDocx() {
-    const { companyName, totalHoursStr, totalAmountStr, rateStr, retainerLine } = getInvoiceData();
+    const { companyName, billToAddress, totalHoursStr, totalAmountStr, rateStr, retainerLine } = getInvoiceData();
     const { generateInvoiceDocx } = await import('../../utils/invoiceDocx');
     await generateInvoiceDocx(
       invoice,
       companyName,
-      company?.billingAddress,
+      billToAddress,
       grouped,
       totalHoursStr,
       totalAmountStr,
@@ -446,6 +484,12 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
 
   const monthLabel = invoice.retainerMonth ? getMonthLabel(invoice.retainerMonth + '-01') : '';
 
+  const effectiveBillToName = (invoice.billToNameOverride && invoice.billToNameOverride.trim()) || company?.name || 'Unknown';
+  const effectiveBillToAddress = invoice.billToAddressOverride != null
+    ? invoice.billToAddressOverride
+    : (company?.billingAddress || '');
+  const hasBillToOverride = !!(invoice.billToNameOverride || invoice.billToAddressOverride);
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -454,6 +498,57 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
           <p className="font-semibold text-lg">{company?.name}</p>
         </div>
         <Badge color={statusColor[invoice.status]}>{invoice.status.toUpperCase()}</Badge>
+      </div>
+
+      <div className="border rounded-md p-3 bg-gray-50">
+        <div className="flex items-start justify-between gap-3">
+          <div className="text-sm">
+            <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">Bill To {hasBillToOverride && <span className="ml-1 text-amber-600 normal-case tracking-normal">(overridden for this invoice)</span>}</div>
+            {!editingBillTo && (
+              <>
+                <div className="font-semibold">{effectiveBillToName}</div>
+                {effectiveBillToAddress && (
+                  <div className="text-gray-600 whitespace-pre-line mt-0.5">{effectiveBillToAddress}</div>
+                )}
+              </>
+            )}
+          </div>
+          {!editingBillTo && (
+            <button onClick={startEditBillTo} className="text-xs text-blue-600 hover:text-blue-800 font-medium shrink-0">Edit</button>
+          )}
+        </div>
+        {editingBillTo && (
+          <div className="space-y-2 mt-2">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Name</label>
+              <input
+                type="text"
+                value={draftBillToName}
+                onChange={(e) => setDraftBillToName(e.target.value)}
+                placeholder={company?.name || ''}
+                className="w-full border rounded-md px-3 py-2 text-sm bg-white"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Address</label>
+              <textarea
+                value={draftBillToAddress}
+                onChange={(e) => setDraftBillToAddress(e.target.value)}
+                rows={3}
+                placeholder={company?.billingAddress || 'Street, City, State ZIP, Country'}
+                className="w-full border rounded-md px-3 py-2 text-sm bg-white"
+              />
+            </div>
+            <p className="text-xs text-gray-500">Leave blank to use the company defaults. Only this invoice is affected.</p>
+            <div className="flex items-center gap-2">
+              <button onClick={saveBillTo} className="bg-blue-600 text-white px-3 py-1.5 rounded-md text-xs font-medium hover:bg-blue-700">Save</button>
+              <button onClick={() => setEditingBillTo(false)} className="text-xs text-gray-600 hover:text-gray-800 px-2">Cancel</button>
+              {hasBillToOverride && (
+                <button onClick={resetBillTo} className="text-xs text-gray-600 hover:text-gray-800 px-2 ml-auto">Reset to company defaults</button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-4 text-sm">
