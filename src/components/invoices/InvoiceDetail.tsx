@@ -238,6 +238,7 @@ function buildPrintHtml(
   const bankFields: string[] = [];
   if (profile.ein) bankFields.push(`<div>EIN: ${esc(profile.ein)}</div>`);
   if (bank?.bankName) bankFields.push(`<div>Bank: ${esc(bank.bankName)}</div>`);
+  if (bank?.bankAddress) bankFields.push(`<div>Bank Address: ${esc(bank.bankAddress).replace(/\n/g, '<br>')}</div>`);
   if (bank?.accountName) bankFields.push(`<div>Account Name: ${esc(bank.accountName)}</div>`);
   if (bank?.routingNumber) bankFields.push(`<div>Routing #: ${esc(bank.routingNumber)}</div>`);
   if (bank?.accountNumber) bankFields.push(`<div>Account #: ${esc(bank.accountNumber)}</div>`);

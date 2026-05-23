@@ -512,6 +512,13 @@ export async function generateInvoiceDocx(
   const bankItems: string[] = [];
   if (profile.ein) bankItems.push(`EIN: ${profile.ein}`);
   if (bank?.bankName) bankItems.push(`Bank: ${bank.bankName}`);
+  if (bank?.bankAddress) {
+    const lines = bank.bankAddress.split('\n').map((l) => l.trim()).filter(Boolean);
+    if (lines.length > 0) {
+      bankItems.push(`Bank Address: ${lines[0]}`);
+      for (let i = 1; i < lines.length; i++) bankItems.push(lines[i]);
+    }
+  }
   if (bank?.accountName) bankItems.push(`Account Name: ${bank.accountName}`);
   if (bank?.routingNumber) bankItems.push(`Routing #: ${bank.routingNumber}`);
   if (bank?.accountNumber) bankItems.push(`Account #: ${bank.accountNumber}`);

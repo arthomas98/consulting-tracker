@@ -11,6 +11,13 @@ import Modal from '../shared/Modal';
 
 const CHANGELOG: { version: string; date: string; changes: string[] }[] = [
   {
+    version: '1.5.8',
+    date: '2026-05-23',
+    changes: [
+      'Bank Address field on each bank account — renders in the Payment Information block of both print/PDF and Word invoice exports (multi-line addresses supported)',
+    ],
+  },
+  {
     version: '1.5.7',
     date: '2026-05-23',
     changes: [
@@ -537,7 +544,7 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">Dashboard</h2>
-        <button onClick={() => setShowChangelog(true)} className="text-xs text-gray-400 hover:text-blue-600 transition-colors">v1.5.7</button>
+        <button onClick={() => setShowChangelog(true)} className="text-xs text-gray-400 hover:text-blue-600 transition-colors">v1.5.8</button>
       </div>
       <p className="text-sm text-gray-500 -mt-4">
         New here? Check out the <Link to="/getting-started" className="text-blue-600 hover:text-blue-800 font-medium">Getting Started</Link> guide.

@@ -4,6 +4,7 @@ export interface BankAccount {
   id: string;
   label: string;
   bankName?: string;
+  bankAddress?: string;
   accountName?: string;
   accountNumber?: string;
   routingNumber?: string;
