@@ -32,6 +32,7 @@ export interface Invoice {
   exchangeRateToUSD?: number;
   billToNameOverride?: string;
   billToAddressOverride?: string;
+  bankIdOverride?: string;
   createdAt: string;
   updatedAt: string;
 }

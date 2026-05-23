@@ -1,5 +1,5 @@
 import type { Invoice, Currency, LineItem } from '../types';
-import type { BusinessProfile } from './storage';
+import type { BankAccount, BusinessProfile } from './storage';
 
 interface WeekLine {
   mondayDate: string;
@@ -32,6 +32,7 @@ export async function generateInvoiceDocx(
   rateStr: string,
   currency: Currency,
   profile: BusinessProfile,
+  bank: BankAccount | undefined,
   isRetainer: boolean,
   vatReverseCharge: boolean,
   vatNoticeText: string | undefined,
@@ -510,11 +511,11 @@ export async function generateInvoiceDocx(
   // --- Payment Information ---
   const bankItems: string[] = [];
   if (profile.ein) bankItems.push(`EIN: ${profile.ein}`);
-  if (profile.bankName) bankItems.push(`Bank: ${profile.bankName}`);
-  if (profile.accountName) bankItems.push(`Account Name: ${profile.accountName}`);
-  if (profile.routingNumber) bankItems.push(`Routing #: ${profile.routingNumber}`);
-  if (profile.accountNumber) bankItems.push(`Account #: ${profile.accountNumber}`);
-  if (profile.swiftCode) bankItems.push(`SWIFT: ${profile.swiftCode}`);
+  if (bank?.bankName) bankItems.push(`Bank: ${bank.bankName}`);
+  if (bank?.accountName) bankItems.push(`Account Name: ${bank.accountName}`);
+  if (bank?.routingNumber) bankItems.push(`Routing #: ${bank.routingNumber}`);
+  if (bank?.accountNumber) bankItems.push(`Account #: ${bank.accountNumber}`);
+  if (bank?.swiftCode) bankItems.push(`SWIFT: ${bank.swiftCode}`);
 
   const bankSection: InstanceType<typeof Paragraph>[] = [];
   if (bankItems.length > 0) {

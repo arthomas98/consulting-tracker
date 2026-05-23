@@ -66,11 +66,8 @@ export function profileToRows(profile: BusinessProfile): string[][] {
     ['Email', profile.email],
     ['Phone', profile.phone],
     ['EIN', profile.ein],
-    ['Routing Number', profile.routingNumber || ''],
-    ['SWIFT Code', profile.swiftCode || ''],
-    ['Account Number', profile.accountNumber || ''],
-    ['Bank Name', profile.bankName || ''],
-    ['Account Name', profile.accountName || ''],
+    ['Banks (JSON)', JSON.stringify(profile.banks ?? [])],
+    ['Default Bank ID', profile.defaultBankId || ''],
   ];
 }
 
@@ -195,12 +192,25 @@ export function rowsToProfile(rows: string[][]): BusinessProfile {
   for (const row of rows.slice(1)) {
     if (row[0]) map.set(row[0], row[1] || '');
   }
+  let banks: BusinessProfile['banks'];
+  const banksJson = map.get('Banks (JSON)');
+  if (banksJson) {
+    try {
+      const parsed = JSON.parse(banksJson);
+      if (Array.isArray(parsed)) banks = parsed;
+    } catch {
+      banks = [];
+    }
+  }
   return {
     name: map.get('Name') || '',
     address: map.get('Address') || '',
     email: map.get('Email') || '',
     phone: map.get('Phone') || '',
     ein: map.get('EIN') || '',
+    banks,
+    defaultBankId: map.get('Default Bank ID') || undefined,
+    // Legacy single-bank fields — kept so older sheets still import via the getProfile() migration.
     routingNumber: map.get('Routing Number') || undefined,
     swiftCode: map.get('SWIFT Code') || undefined,
     accountNumber: map.get('Account Number') || undefined,

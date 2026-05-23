@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { useCompanies, useProjects } from '../../contexts/StorageContext';
+import { useCompanies, useProjects, useStorage } from '../../contexts/StorageContext';
 import type { Company, Currency, BillingType } from '../../types';
 import { formatCurrency } from '../../utils/formatCurrency';
+import { getDefaultBank } from '../../utils/banks';
 import Modal from '../shared/Modal';
 import Badge from '../shared/Badge';
 
@@ -23,6 +24,9 @@ const emptyCo: Omit<Company, 'id' | 'createdAt' | 'updatedAt'> = {
 export default function CompaniesPage() {
   const { companies, saveCompany } = useCompanies();
   const { projects, saveProject } = useProjects();
+  const { profile } = useStorage();
+  const banks = profile.banks ?? [];
+  const defaultBank = getDefaultBank(profile);
   const [editing, setEditing] = useState<Company | null>(null);
   const [showInactive, setShowInactive] = useState(false);
   const [isNew, setIsNew] = useState(false);
@@ -259,6 +263,24 @@ export default function CompaniesPage() {
                   className="w-full border rounded-md px-3 py-2 text-sm"
                 />
               </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Bank Account</label>
+              <select
+                value={editing.bankId || ''}
+                onChange={(e) => setEditing({ ...editing, bankId: e.target.value || undefined })}
+                className="w-full border rounded-md px-3 py-2 text-sm bg-white"
+              >
+                <option value="">
+                  {defaultBank ? `Use default (${defaultBank.label || 'unnamed'})` : 'Use default'}
+                </option>
+                {banks.map((b) => (
+                  <option key={b.id} value={b.id}>{b.label || 'Unnamed bank'}</option>
+                ))}
+              </select>
+              {banks.length === 0 && (
+                <p className="text-xs text-gray-400 mt-1">No banks defined. Add them in Settings → Bank Accounts.</p>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>

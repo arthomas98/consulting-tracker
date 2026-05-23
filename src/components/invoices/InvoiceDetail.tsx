@@ -2,10 +2,11 @@ import { useMemo, useState } from 'react';
 import { useCompanies, useProjects, useTimeEntries, useInvoices, useProfile } from '../../contexts/StorageContext';
 import type { Invoice, TimeEntry, Currency, LineItem } from '../../types';
 import type { Project } from '../../types';
-import type { BusinessProfile } from '../../utils/storage';
+import type { BankAccount, BusinessProfile } from '../../utils/storage';
 import { formatDate, today, getMonthLabel, getMondayDate } from '../../utils/dateUtils';
 import { formatCurrency, formatHours } from '../../utils/formatCurrency';
 import { getExchangeRate } from '../../utils/exchangeRate';
+import { resolveInvoiceBank } from '../../utils/banks';
 import Badge from '../shared/Badge';
 
 interface Props {
@@ -121,6 +122,7 @@ function buildPrintHtml(
   rate: string,
   currency: Currency,
   profile: BusinessProfile,
+  bank: BankAccount | undefined,
   isRetainer: boolean,
   vatReverseCharge: boolean,
   vatNoticeText: string | undefined,
@@ -235,11 +237,11 @@ function buildPrintHtml(
 
   const bankFields: string[] = [];
   if (profile.ein) bankFields.push(`<div>EIN: ${esc(profile.ein)}</div>`);
-  if (profile.bankName) bankFields.push(`<div>Bank: ${esc(profile.bankName)}</div>`);
-  if (profile.accountName) bankFields.push(`<div>Account Name: ${esc(profile.accountName)}</div>`);
-  if (profile.routingNumber) bankFields.push(`<div>Routing #: ${esc(profile.routingNumber)}</div>`);
-  if (profile.accountNumber) bankFields.push(`<div>Account #: ${esc(profile.accountNumber)}</div>`);
-  if (profile.swiftCode) bankFields.push(`<div>SWIFT: ${esc(profile.swiftCode)}</div>`);
+  if (bank?.bankName) bankFields.push(`<div>Bank: ${esc(bank.bankName)}</div>`);
+  if (bank?.accountName) bankFields.push(`<div>Account Name: ${esc(bank.accountName)}</div>`);
+  if (bank?.routingNumber) bankFields.push(`<div>Routing #: ${esc(bank.routingNumber)}</div>`);
+  if (bank?.accountNumber) bankFields.push(`<div>Account #: ${esc(bank.accountNumber)}</div>`);
+  if (bank?.swiftCode) bankFields.push(`<div>SWIFT: ${esc(bank.swiftCode)}</div>`);
   const bankHtml = bankFields.length > 0
     ? `<div style="margin-top:20px;padding-top:16px;border-top:1px solid #ddd;font-size:13px;color:#555"><strong>Payment Information</strong><div style="margin-top:6px;line-height:1.6">${bankFields.join('')}</div></div>`
     : '';
@@ -324,6 +326,34 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
   const [editingBillTo, setEditingBillTo] = useState(false);
   const [draftBillToName, setDraftBillToName] = useState(invoice.billToNameOverride ?? '');
   const [draftBillToAddress, setDraftBillToAddress] = useState(invoice.billToAddressOverride ?? '');
+  const [editingBank, setEditingBank] = useState(false);
+  const [draftBankOverrideId, setDraftBankOverrideId] = useState(invoice.bankIdOverride ?? '');
+
+  const effectiveBank = resolveInvoiceBank(invoice, company, profile);
+  const hasBankOverride = !!invoice.bankIdOverride;
+
+  function startEditBank() {
+    setDraftBankOverrideId(invoice.bankIdOverride ?? '');
+    setEditingBank(true);
+  }
+
+  function saveBank() {
+    saveInvoice({
+      ...invoice,
+      bankIdOverride: draftBankOverrideId || undefined,
+      updatedAt: new Date().toISOString(),
+    });
+    setEditingBank(false);
+  }
+
+  function resetBank() {
+    saveInvoice({
+      ...invoice,
+      bankIdOverride: undefined,
+      updatedAt: new Date().toISOString(),
+    });
+    setEditingBank(false);
+  }
 
   function startEditBillTo() {
     setDraftBillToName(invoice.billToNameOverride ?? '');
@@ -443,6 +473,7 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
       rateStr,
       invoice.currency,
       profile,
+      effectiveBank,
       isRetainer,
       !!company?.vatReverseCharge,
       company?.vatNoticeText,
@@ -472,6 +503,7 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
       rateStr,
       invoice.currency,
       profile,
+      effectiveBank,
       isRetainer,
       !!company?.vatReverseCharge,
       company?.vatNoticeText,
@@ -545,6 +577,54 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
               <button onClick={() => setEditingBillTo(false)} className="text-xs text-gray-600 hover:text-gray-800 px-2">Cancel</button>
               {hasBillToOverride && (
                 <button onClick={resetBillTo} className="text-xs text-gray-600 hover:text-gray-800 px-2 ml-auto">Reset to company defaults</button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="border rounded-md p-3 bg-gray-50">
+        <div className="flex items-start justify-between gap-3">
+          <div className="text-sm">
+            <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">
+              Payment Bank {hasBankOverride && <span className="ml-1 text-amber-600 normal-case tracking-normal">(overridden for this invoice)</span>}
+            </div>
+            {!editingBank && (
+              effectiveBank ? (
+                <>
+                  <div className="font-semibold">{effectiveBank.label || 'Unnamed bank'}</div>
+                  {effectiveBank.bankName && <div className="text-gray-600 mt-0.5">{effectiveBank.bankName}</div>}
+                </>
+              ) : (
+                <div className="text-gray-400 italic">No bank — Payment Information section will be omitted.</div>
+              )
+            )}
+          </div>
+          {!editingBank && (
+            <button onClick={startEditBank} className="text-xs text-blue-600 hover:text-blue-800 font-medium shrink-0">Edit</button>
+          )}
+        </div>
+        {editingBank && (
+          <div className="space-y-2 mt-2">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Bank</label>
+              <select
+                value={draftBankOverrideId}
+                onChange={(e) => setDraftBankOverrideId(e.target.value)}
+                className="w-full border rounded-md px-3 py-2 text-sm bg-white"
+              >
+                <option value="">Use company default</option>
+                {(profile.banks ?? []).map((b) => (
+                  <option key={b.id} value={b.id}>{b.label || 'Unnamed bank'}</option>
+                ))}
+              </select>
+            </div>
+            <p className="text-xs text-gray-500">Override the bank shown on this invoice only. Leave as "Use company default" to follow the company setting.</p>
+            <div className="flex items-center gap-2">
+              <button onClick={saveBank} className="bg-blue-600 text-white px-3 py-1.5 rounded-md text-xs font-medium hover:bg-blue-700">Save</button>
+              <button onClick={() => setEditingBank(false)} className="text-xs text-gray-600 hover:text-gray-800 px-2">Cancel</button>
+              {hasBankOverride && (
+                <button onClick={resetBank} className="text-xs text-gray-600 hover:text-gray-800 px-2 ml-auto">Reset to company default</button>
               )}
             </div>
           </div>
