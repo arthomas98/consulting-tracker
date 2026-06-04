@@ -154,11 +154,11 @@ function buildPrintHtml(
       <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right">${esc(retainerLine.amount)}</td>
     </tr>
     ${lineItemRows}
+    <tr class="totals-row">
+      <td style="font-weight:600;border-top:2px solid #ddd;padding:8px">Total</td>
+      <td style="font-weight:600;border-top:2px solid #ddd;padding:8px;text-align:right">${esc(totalAmountStr)}</td>
+    </tr>
   </tbody>
-  <tfoot><tr>
-    <td style="font-weight:600;border-top:2px solid #ddd;padding:8px">Total</td>
-    <td style="font-weight:600;border-top:2px solid #ddd;padding:8px;text-align:right">${esc(totalAmountStr)}</td>
-  </tr></tfoot>
 </table>`;
   } else {
     const rows: string[] = [];
@@ -220,8 +220,7 @@ function buildPrintHtml(
     bodyHtml = `
 <table>
   <thead><tr>${headerCols}</tr></thead>
-  <tbody>${rows.join('')}${liRows}</tbody>
-  <tfoot><tr>${footerCols}</tr></tfoot>
+  <tbody>${rows.join('')}${liRows}<tr class="totals-row">${footerCols}</tr></tbody>
 </table>`;
   }
 
@@ -260,6 +259,7 @@ function buildPrintHtml(
   .party .label { color: #888; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
   table { width: 100%; border-collapse: collapse; font-size: 14px; margin: 20px 0; }
   th { text-align: left; padding: 8px; border-bottom: 2px solid #ddd; font-weight: 600; }
+  tr.totals-row { page-break-inside: avoid; break-inside: avoid; }
   .notes { font-size: 13px; color: #666; margin-top: 16px; }
   @media print { body { padding: 0; } }
 </style>
