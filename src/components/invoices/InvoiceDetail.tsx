@@ -330,6 +330,8 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
   const [draftBillToAddress, setDraftBillToAddress] = useState(invoice.billToAddressOverride ?? '');
   const [editingBank, setEditingBank] = useState(false);
   const [draftBankOverrideId, setDraftBankOverrideId] = useState(invoice.bankIdOverride ?? '');
+  const [editingNumber, setEditingNumber] = useState(false);
+  const [draftInvoiceNumber, setDraftInvoiceNumber] = useState(invoice.invoiceNumber ?? '');
 
   const effectiveBank = resolveInvoiceBank(invoice, company, profile);
   const hasBankOverride = !!invoice.bankIdOverride;
@@ -355,6 +357,20 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
       updatedAt: new Date().toISOString(),
     });
     setEditingBank(false);
+  }
+
+  function saveInvoiceNumber() {
+    const trimmed = draftInvoiceNumber.trim();
+    if (!trimmed || trimmed === invoice.invoiceNumber) {
+      setEditingNumber(false);
+      return;
+    }
+    saveInvoice({
+      ...invoice,
+      invoiceNumber: trimmed,
+      updatedAt: new Date().toISOString(),
+    });
+    setEditingNumber(false);
   }
 
   function startEditBillTo() {
@@ -541,7 +557,33 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm text-gray-500">Invoice #{invoice.invoiceNumber}</p>
+          {editingNumber && invoice.status === 'draft' ? (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-500">Invoice #</span>
+              <input
+                type="text"
+                value={draftInvoiceNumber}
+                onChange={(e) => setDraftInvoiceNumber(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') saveInvoiceNumber(); if (e.key === 'Escape') setEditingNumber(false); }}
+                autoFocus
+                className="w-24 border rounded-md px-2 py-0.5 text-sm tabular-nums"
+              />
+              <button onClick={saveInvoiceNumber} className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded hover:bg-blue-700">Save</button>
+              <button onClick={() => { setDraftInvoiceNumber(invoice.invoiceNumber ?? ''); setEditingNumber(false); }} className="text-xs text-gray-500 hover:text-gray-700">Cancel</button>
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500">
+              Invoice #{invoice.invoiceNumber}
+              {invoice.status === 'draft' && (
+                <button
+                  onClick={() => { setDraftInvoiceNumber(invoice.invoiceNumber ?? ''); setEditingNumber(true); }}
+                  className="ml-2 text-xs text-blue-600 hover:text-blue-800"
+                >
+                  Edit
+                </button>
+              )}
+            </p>
+          )}
           <p className="font-semibold text-lg">{company?.name}</p>
         </div>
         <Badge color={statusColor[invoice.status]}>{invoice.status.toUpperCase()}</Badge>

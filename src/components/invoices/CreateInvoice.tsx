@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useCompanies, useProjects, useTimeEntries, useInvoices } from '../../contexts/StorageContext';
 import type { Invoice, LineItem, InvoiceDetailLevel } from '../../types';
 import { totalHours, totalAmount, isFixedMonthly } from '../../utils/calculations';
@@ -22,6 +22,7 @@ export default function CreateInvoice({ onDone }: Props) {
   const [retainerMonth, setRetainerMonth] = useState(() => today().substring(0, 7));
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [detailLevel, setDetailLevel] = useState<InvoiceDetailLevel>('weekly');
+  const [invoiceNumberInput, setInvoiceNumberInput] = useState('');
 
   function addLineItem() {
     setLineItems((prev) => [...prev, { id: crypto.randomUUID(), description: '', amount: 0 }]);
@@ -39,6 +40,26 @@ export default function CreateInvoice({ onDone }: Props) {
 
   const company = companies.find((c) => c.id === companyId);
   const isRetainer = company ? isFixedMonthly(company) : false;
+
+  // Self-healing next number: take max of the company's stored counter and
+  // (highest existing invoice number for this company + 1). Survives drift
+  // from manual edits, deleted invoices, or unsaved form changes.
+  const suggestedNumber = useMemo(() => {
+    if (!company) return 1;
+    const stored = company.nextInvoiceNumber || 1;
+    let maxExisting = 0;
+    for (const inv of invoices) {
+      if (inv.companyId !== company.id || !inv.invoiceNumber) continue;
+      const n = parseInt(inv.invoiceNumber, 10);
+      if (!isNaN(n) && n > maxExisting) maxExisting = n;
+    }
+    return Math.max(stored, maxExisting + 1);
+  }, [company, invoices]);
+
+  // Reset the editable input when the suggested number changes (e.g. switching companies).
+  useEffect(() => {
+    setInvoiceNumberInput(String(suggestedNumber).padStart(3, '0'));
+  }, [suggestedNumber]);
 
   const invoicedEntryIds = useMemo(() => {
     const ids = new Set<string>();
@@ -86,10 +107,11 @@ export default function CreateInvoice({ onDone }: Props) {
 
     const now = new Date().toISOString();
 
-    // Per-company invoice numbering
-    const nextNum = company.nextInvoiceNumber || 1;
+    // Per-company invoice numbering — prefer the user-edited input, fall back
+    // to the suggested next number. Persist this+1 as the new counter.
+    const parsedInput = parseInt(invoiceNumberInput, 10);
+    const nextNum = !isNaN(parsedInput) && parsedInput > 0 ? parsedInput : suggestedNumber;
     const invoiceNumber = String(nextNum).padStart(3, '0');
-    // Increment company's next invoice number
     saveCompany({ ...company, nextInvoiceNumber: nextNum + 1, updatedAt: now });
 
     const validLineItems = lineItems.filter((li) => li.description.trim() && li.amount);
@@ -145,15 +167,26 @@ export default function CreateInvoice({ onDone }: Props) {
 
   return (
     <div className="space-y-4">
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Company</label>
-        <select
-          value={companyId}
-          onChange={(e) => { setCompanyId(e.target.value); setSelected(new Set()); }}
-          className="w-full border rounded-md px-3 py-2 text-sm"
-        >
-          {activeCompanies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
+      <div className="grid grid-cols-[1fr_140px] gap-3">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Company</label>
+          <select
+            value={companyId}
+            onChange={(e) => { setCompanyId(e.target.value); setSelected(new Set()); }}
+            className="w-full border rounded-md px-3 py-2 text-sm"
+          >
+            {activeCompanies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Invoice #</label>
+          <input
+            type="text"
+            value={invoiceNumberInput}
+            onChange={(e) => setInvoiceNumberInput(e.target.value)}
+            className="w-full border rounded-md px-3 py-2 text-sm tabular-nums"
+          />
+        </div>
       </div>
 
       {isRetainer ? (

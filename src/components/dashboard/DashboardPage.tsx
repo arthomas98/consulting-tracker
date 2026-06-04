@@ -11,6 +11,14 @@ import Modal from '../shared/Modal';
 
 const CHANGELOG: { version: string; date: string; changes: string[] }[] = [
   {
+    version: '1.5.12',
+    date: '2026-06-04',
+    changes: [
+      'Editable Invoice # on the Create Invoice modal — defaults to the next number from company settings but can be overridden per invoice (no round-trip to company settings); self-heals from any drift by using max(stored counter, highest-existing-number-for-company + 1)',
+      'Editable Invoice # on draft invoices — fix the number on an existing draft without deleting and recreating',
+    ],
+  },
+  {
     version: '1.5.11',
     date: '2026-06-04',
     changes: [
@@ -626,7 +634,7 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">Dashboard</h2>
-        <button onClick={() => setShowChangelog(true)} className="text-xs text-gray-400 hover:text-blue-600 transition-colors">v1.5.11</button>
+        <button onClick={() => setShowChangelog(true)} className="text-xs text-gray-400 hover:text-blue-600 transition-colors">v1.5.12</button>
       </div>
       <p className="text-sm text-gray-500 -mt-4">
         New here? Check out the <Link to="/getting-started" className="text-blue-600 hover:text-blue-800 font-medium">Getting Started</Link> guide.
