@@ -19,6 +19,23 @@ export default function InvoicesPage() {
   const [companyFilter, setCompanyFilter] = useState('');
   const [payingInvoiceId, setPayingInvoiceId] = useState<string | null>(null);
   const [paymentNoteInput, setPaymentNoteInput] = useState('');
+  const [paidUSDInput, setPaidUSDInput] = useState('');
+
+  function confirmPaid(inv: Invoice) {
+    const parsed = parseFloat(paidUSDInput);
+    const usd = inv.currency !== 'USD' && !isNaN(parsed) && parsed > 0 ? parsed : undefined;
+    saveInvoice({
+      ...inv,
+      status: 'paid',
+      paidDate: today(),
+      paymentNote: paymentNoteInput || undefined,
+      paidAmountUSD: usd,
+      updatedAt: new Date().toISOString(),
+    });
+    setPayingInvoiceId(null);
+    setPaymentNoteInput('');
+    setPaidUSDInput('');
+  }
 
   const companyMap = useMemo(() => new Map(companies.map((c) => [c.id, c])), [companies]);
 
@@ -93,7 +110,12 @@ export default function InvoicesPage() {
                       <div className="flex items-center justify-end gap-2">
                         {inv.status === 'sent' && !isPaying && (
                           <button
-                            onClick={(e) => { e.stopPropagation(); setPayingInvoiceId(inv.id); setPaymentNoteInput(''); }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPayingInvoiceId(inv.id);
+                              setPaymentNoteInput('');
+                              setPaidUSDInput('');
+                            }}
                             className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded hover:bg-green-200 font-medium"
                           >
                             Mark Paid
@@ -101,6 +123,18 @@ export default function InvoicesPage() {
                         )}
                         {isPaying && (
                           <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                            {inv.currency !== 'USD' && (
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={paidUSDInput}
+                                onChange={(e) => setPaidUSDInput(e.target.value)}
+                                placeholder={inv.exchangeRateToUSD != null ? `$${(inv.totalAmount * inv.exchangeRateToUSD).toFixed(2)}` : 'USD received'}
+                                title="USD actually received (leave blank to use snapshot rate)"
+                                className="border rounded px-2 py-0.5 text-xs w-24 text-right tabular-nums"
+                                onKeyDown={(e) => { if (e.key === 'Enter') confirmPaid(inv); }}
+                              />
+                            )}
                             <input
                               type="text"
                               value={paymentNoteInput}
@@ -108,21 +142,16 @@ export default function InvoicesPage() {
                               placeholder="Note (optional)"
                               className="border rounded px-2 py-0.5 text-xs w-32"
                               autoFocus
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  saveInvoice({ ...inv, status: 'paid', paidDate: today(), paymentNote: paymentNoteInput || undefined, updatedAt: new Date().toISOString() });
-                                  setPayingInvoiceId(null);
-                                }
-                              }}
+                              onKeyDown={(e) => { if (e.key === 'Enter') confirmPaid(inv); }}
                             />
                             <button
-                              onClick={() => { saveInvoice({ ...inv, status: 'paid', paidDate: today(), paymentNote: paymentNoteInput || undefined, updatedAt: new Date().toISOString() }); setPayingInvoiceId(null); }}
+                              onClick={() => confirmPaid(inv)}
                               className="text-xs bg-green-600 text-white px-2 py-0.5 rounded hover:bg-green-700"
                             >
                               OK
                             </button>
                             <button
-                              onClick={() => setPayingInvoiceId(null)}
+                              onClick={() => { setPayingInvoiceId(null); setPaymentNoteInput(''); setPaidUSDInput(''); }}
                               className="text-xs text-gray-400 hover:text-gray-600"
                             >
                               X

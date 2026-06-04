@@ -42,7 +42,7 @@ export function timeEntriesToRows(entries: TimeEntry[]): string[][] {
 }
 
 export function invoicesToRows(invoices: Invoice[]): string[][] {
-  const header = ['ID', 'Company ID', 'Invoice #', 'Date', 'Time Entry IDs', 'Total Hours', 'Total Amount', 'Currency', 'Rate Used', 'Status', 'Paid Date', 'Notes', 'Created', 'Updated', 'Billing Type', 'Retainer Month', 'Exchange Rate to USD'];
+  const header = ['ID', 'Company ID', 'Invoice #', 'Date', 'Time Entry IDs', 'Total Hours', 'Total Amount', 'Currency', 'Rate Used', 'Status', 'Paid Date', 'Notes', 'Created', 'Updated', 'Billing Type', 'Retainer Month', 'Exchange Rate to USD', 'Paid Amount (USD)'];
   const rows = invoices.map((i) => [
     i.id, i.companyId, i.invoiceNumber || '', i.invoiceDate,
     i.timeEntryIds.join(';'),
@@ -53,6 +53,7 @@ export function invoicesToRows(invoices: Invoice[]): string[][] {
     i.billingType || 'hourly',
     i.retainerMonth || '',
     i.exchangeRateToUSD != null ? String(i.exchangeRateToUSD) : '',
+    i.paidAmountUSD != null ? String(i.paidAmountUSD) : '',
   ]);
   return [header, ...rows];
 }
@@ -131,6 +132,7 @@ export function rowsToInvoices(rows: string[][]): Invoice[] {
   const header = rows[0];
   const hasBillingType = header.includes('Billing Type');
   const hasExchangeRate = header.includes('Exchange Rate to USD');
+  const hasPaidAmountUSD = header.includes('Paid Amount (USD)');
   return rows.slice(1).map((r) => ({
     id: r[0],
     companyId: r[1],
@@ -147,6 +149,7 @@ export function rowsToInvoices(rows: string[][]): Invoice[] {
     billingType: (hasBillingType && r[14] ? r[14] as BillingType : 'hourly'),
     retainerMonth: hasBillingType && r[15] ? r[15] : undefined,
     exchangeRateToUSD: hasExchangeRate && r[16] ? parseFloat(r[16]) : undefined,
+    paidAmountUSD: hasPaidAmountUSD && r[17] ? parseFloat(r[17]) : undefined,
     createdAt: r[12],
     updatedAt: r[13],
   }));

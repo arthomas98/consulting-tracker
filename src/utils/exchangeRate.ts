@@ -1,4 +1,4 @@
-import type { Currency } from '../types';
+import type { Currency, Invoice } from '../types';
 
 const CACHE_KEY = 'ct_exchangeRates';
 const STALE_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -55,6 +55,16 @@ export async function getExchangeRate(from: Currency, date?: string): Promise<nu
 export function convertToUSD(amount: number, _currency: Currency, rate: number | null): number | null {
   if (rate == null) return null;
   return amount * rate;
+}
+
+// Effective USD value of an invoice:
+//   - If paid and paidAmountUSD is set → that exact figure (FX-adjusted at payment time).
+//   - Else if exchangeRateToUSD is snapshotted → totalAmount × snapshot rate.
+//   - Else null.
+export function invoiceUSDValue(inv: Invoice): number | null {
+  if (inv.status === 'paid' && inv.paidAmountUSD != null) return inv.paidAmountUSD;
+  if (inv.exchangeRateToUSD != null) return inv.totalAmount * inv.exchangeRateToUSD;
+  return null;
 }
 
 export async function preloadRates(): Promise<Record<Currency, number | null>> {

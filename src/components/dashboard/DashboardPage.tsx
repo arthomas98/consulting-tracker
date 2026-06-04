@@ -4,12 +4,19 @@ import { totalsByCurrency, entryAmount, isFixedMonthly } from '../../utils/calcu
 import { startOfMonth, endOfMonth, startOfYear, endOfYear, today, isInRange, getISOWeek, getWeekLabel, getMonthIndex, shortMonthName, formatDate, getMonthLabel, daysSince } from '../../utils/dateUtils';
 import { formatCurrency, formatCurrencyShort, formatHours } from '../../utils/formatCurrency';
 import { preloadRates, convertToUSD } from '../../utils/exchangeRate';
-import type { Currency } from '../../types';
+import type { Currency, Invoice } from '../../types';
 import { Link } from 'react-router-dom';
 import TimeEntryForm from '../time/TimeEntryForm';
 import Modal from '../shared/Modal';
 
 const CHANGELOG: { version: string; date: string; changes: string[] }[] = [
+  {
+    version: '1.5.9',
+    date: '2026-06-04',
+    changes: [
+      'FX-adjusted invoice payments — when marking a non-USD invoice as paid, optionally enter the actual USD amount received (handles exchange-rate drift between invoice and payment); shows implied paid-date FX rate vs send-time snapshot. Adjusted figure flows into invoice detail, Reports → Paid table, CSV/Sheets exports, and Dashboard YTD/MTD revenue cards',
+    ],
+  },
   {
     version: '1.5.8',
     date: '2026-05-23',
@@ -280,7 +287,64 @@ export default function DashboardPage() {
   const monthHours = monthTotals.reduce((s, t) => s + t.hours, 0);
   const yearHours = yearTotals.reduce((s, t) => s + t.hours, 0);
 
-  // Converted USD totals
+  // Converted USD totals.
+  //
+  // For paid non-USD invoices with a `paidAmountUSD` override, swap the
+  // live-FX estimate for the actual USD received (cash-basis accounting for
+  // settled invoices). All other amounts keep the live-FX estimate.
+  function fxAdjustForPaidInvoices(
+    liveFXTotal: number,
+    invoicesInPeriod: Invoice[],
+    hourlyInvoiceAmount: (inv: Invoice) => number,
+  ): number {
+    let total = liveFXTotal;
+    for (const inv of invoicesInPeriod) {
+      if (inv.status !== 'paid' || inv.currency === 'USD' || inv.paidAmountUSD == null) continue;
+      const liveRate = rates[inv.currency];
+      if (liveRate == null) continue;
+      const portion = inv.billingType === 'fixed_monthly' ? inv.totalAmount : hourlyInvoiceAmount(inv);
+      if (portion === 0) continue;
+      const liveUSD = portion * liveRate;
+      const proRated = (portion / inv.totalAmount) * inv.paidAmountUSD;
+      total = total - liveUSD + proRated;
+    }
+    return total;
+  }
+
+  // Sum entryAmount for entries on `inv` that fall in `entries`.
+  function hourlyAmountInPeriod(inv: Invoice, entries: typeof timeEntries): number {
+    if (inv.billingType === 'fixed_monthly') return 0;
+    const ids = new Set(inv.timeEntryIds);
+    let sum = 0;
+    for (const e of entries) {
+      if (!ids.has(e.id)) continue;
+      const co = companyMap.get(e.companyId);
+      if (!co) continue;
+      sum += entryAmount(e, co.hourlyRate);
+    }
+    return sum;
+  }
+
+  const monthInvoices = useMemo(() => {
+    const monthKey = currentMonth;
+    return invoices.filter((i) => {
+      if (i.billingType === 'fixed_monthly') return i.retainerMonth === monthKey;
+      // Hourly: counted in the month if any of its entries are in this month.
+      return i.timeEntryIds.some((id) => monthEntriesHourly.some((e) => e.id === id));
+    });
+  }, [invoices, currentMonth, monthEntriesHourly]);
+
+  const yearInvoices = useMemo(() => {
+    const startMonth = yearStart.substring(0, 7);
+    const endMonth = yearEnd.substring(0, 7);
+    return invoices.filter((i) => {
+      if (i.billingType === 'fixed_monthly') {
+        return i.retainerMonth && i.retainerMonth >= startMonth && i.retainerMonth <= endMonth;
+      }
+      return i.timeEntryIds.some((id) => yearEntriesHourly.some((e) => e.id === id));
+    });
+  }, [invoices, yearStart, yearEnd, yearEntriesHourly]);
+
   const convertedMonthTotal = useMemo(() => {
     let total = 0;
     let hasNull = false;
@@ -289,8 +353,10 @@ export default function DashboardPage() {
       if (usd == null) { hasNull = true; continue; }
       total += usd;
     }
-    return hasNull ? null : total;
-  }, [monthTotals, rates]);
+    if (hasNull) return null;
+    return fxAdjustForPaidInvoices(total, monthInvoices, (inv) => hourlyAmountInPeriod(inv, monthEntriesHourly));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [monthTotals, rates, monthInvoices, monthEntriesHourly, companyMap]);
 
   const convertedYearTotal = useMemo(() => {
     let total = 0;
@@ -300,8 +366,10 @@ export default function DashboardPage() {
       if (usd == null) { hasNull = true; continue; }
       total += usd;
     }
-    return hasNull ? null : total;
-  }, [yearTotals, rates]);
+    if (hasNull) return null;
+    return fxAdjustForPaidInvoices(total, yearInvoices, (inv) => hourlyAmountInPeriod(inv, yearEntriesHourly));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [yearTotals, rates, yearInvoices, yearEntriesHourly, companyMap]);
 
   // Chart data — convert to USD when rates available
   const chartData = useMemo(() => {
@@ -544,7 +612,7 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">Dashboard</h2>
-        <button onClick={() => setShowChangelog(true)} className="text-xs text-gray-400 hover:text-blue-600 transition-colors">v1.5.8</button>
+        <button onClick={() => setShowChangelog(true)} className="text-xs text-gray-400 hover:text-blue-600 transition-colors">v1.5.9</button>
       </div>
       <p className="text-sm text-gray-500 -mt-4">
         New here? Check out the <Link to="/getting-started" className="text-blue-600 hover:text-blue-800 font-medium">Getting Started</Link> guide.

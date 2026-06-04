@@ -322,6 +322,7 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
   const [showPaidPicker, setShowPaidPicker] = useState(false);
   const [paidDateInput, setPaidDateInput] = useState(today());
   const [paymentNoteInput, setPaymentNoteInput] = useState('');
+  const [paidAmountUSDInput, setPaidAmountUSDInput] = useState('');
   const [editingLineItems, setEditingLineItems] = useState(false);
   const [draftLineItems, setDraftLineItems] = useState<LineItem[]>(invoice.lineItems || []);
   const [editingBillTo, setEditingBillTo] = useState(false);
@@ -418,7 +419,12 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
     setEditingLineItems(false);
   }
 
-  async function updateStatus(status: Invoice['status'], paidDate?: string, paymentNote?: string) {
+  async function updateStatus(
+    status: Invoice['status'],
+    paidDate?: string,
+    paymentNote?: string,
+    paidAmountUSD?: number,
+  ) {
     let exchangeRateToUSD = invoice.exchangeRateToUSD;
 
     if (status === 'sent' && exchangeRateToUSD == null) {
@@ -437,7 +443,15 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
       }
     }
 
-    saveInvoice({ ...invoice, status, paidDate, paymentNote: paymentNote || undefined, exchangeRateToUSD, updatedAt: new Date().toISOString() });
+    saveInvoice({
+      ...invoice,
+      status,
+      paidDate,
+      paymentNote: paymentNote || undefined,
+      exchangeRateToUSD,
+      paidAmountUSD: status === 'paid' ? paidAmountUSD : undefined,
+      updatedAt: new Date().toISOString(),
+    });
   }
 
   function getInvoiceData() {
@@ -639,6 +653,29 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
         <div><span className="text-gray-500">Total Amount:</span> <span className="font-semibold">{formatCurrency(invoice.totalAmount, invoice.currency)}</span></div>
         {isRetainer && invoice.retainerMonth && <div><span className="text-gray-500">Retainer Month:</span> {monthLabel}</div>}
         {invoice.paidDate && <div><span className="text-gray-500">Paid:</span> {formatDate(invoice.paidDate)}</div>}
+        {invoice.status === 'paid' && invoice.currency !== 'USD' && invoice.paidAmountUSD != null && (
+          <div className="col-span-2">
+            <span className="text-gray-500">USD received:</span>{' '}
+            <span className="font-semibold">{formatCurrency(invoice.paidAmountUSD, 'USD')}</span>
+            {invoice.totalAmount > 0 && (() => {
+              const impliedRate = invoice.paidAmountUSD! / invoice.totalAmount;
+              const snapshot = invoice.exchangeRateToUSD;
+              const delta = snapshot ? ((impliedRate - snapshot) / snapshot) * 100 : null;
+              return (
+                <span className="text-xs text-gray-500 ml-2">
+                  (paid {invoice.currency}/USD = {impliedRate.toFixed(4)}
+                  {snapshot != null && <span> vs sent {snapshot.toFixed(4)}</span>}
+                  {delta != null && (
+                    <span className={delta >= 0 ? 'text-emerald-600 ml-1' : 'text-rose-600 ml-1'}>
+                      {delta >= 0 ? '+' : ''}{delta.toFixed(2)}%
+                    </span>
+                  )}
+                  )
+                </span>
+              );
+            })()}
+          </div>
+        )}
         {invoice.paymentNote && <div className="col-span-2"><span className="text-gray-500">Payment Note:</span> {invoice.paymentNote}</div>}
       </div>
 
@@ -857,6 +894,42 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
                   className="border border-green-300 rounded-md px-3 py-1.5 text-sm"
                 />
               </div>
+              {invoice.currency !== 'USD' && (
+                <div className="flex items-center gap-3">
+                  <label className="text-sm font-medium text-green-800">USD received:</label>
+                  <span className="text-sm text-gray-500">$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={paidAmountUSDInput}
+                    onChange={(e) => setPaidAmountUSDInput(e.target.value)}
+                    placeholder={invoice.exchangeRateToUSD != null ? (invoice.totalAmount * invoice.exchangeRateToUSD).toFixed(2) : ''}
+                    className="border border-green-300 rounded-md px-3 py-1.5 text-sm w-32 text-right tabular-nums"
+                  />
+                  {(() => {
+                    const parsed = parseFloat(paidAmountUSDInput);
+                    if (!isNaN(parsed) && parsed > 0 && invoice.totalAmount > 0) {
+                      const impliedRate = parsed / invoice.totalAmount;
+                      const snapshot = invoice.exchangeRateToUSD;
+                      const deltaPct = snapshot ? ((impliedRate - snapshot) / snapshot) * 100 : null;
+                      return (
+                        <span className="text-xs text-gray-500">
+                          implied {invoice.currency}/USD = {impliedRate.toFixed(4)}
+                          {deltaPct != null && (
+                            <span className={deltaPct >= 0 ? 'text-emerald-600 ml-1' : 'text-rose-600 ml-1'}>
+                              ({deltaPct >= 0 ? '+' : ''}{deltaPct.toFixed(2)}% vs send)
+                            </span>
+                          )}
+                        </span>
+                      );
+                    }
+                    if (invoice.exchangeRateToUSD != null) {
+                      return <span className="text-xs text-gray-500">leave blank to use snapshot ({invoice.exchangeRateToUSD.toFixed(4)})</span>;
+                    }
+                    return null;
+                  })()}
+                </div>
+              )}
               <div className="flex items-center gap-3">
                 <label className="text-sm font-medium text-green-800">Note (optional):</label>
                 <input
@@ -869,13 +942,20 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
               </div>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => { updateStatus('paid', paidDateInput, paymentNoteInput); setShowPaidPicker(false); setPaymentNoteInput(''); }}
+                  onClick={() => {
+                    const parsed = parseFloat(paidAmountUSDInput);
+                    const usd = invoice.currency !== 'USD' && !isNaN(parsed) && parsed > 0 ? parsed : undefined;
+                    updateStatus('paid', paidDateInput, paymentNoteInput, usd);
+                    setShowPaidPicker(false);
+                    setPaymentNoteInput('');
+                    setPaidAmountUSDInput('');
+                  }}
                   className="bg-green-600 text-white px-4 py-1.5 rounded-md text-sm font-medium hover:bg-green-700"
                 >
                   Confirm Paid
                 </button>
                 <button
-                  onClick={() => { setShowPaidPicker(false); setPaymentNoteInput(''); }}
+                  onClick={() => { setShowPaidPicker(false); setPaymentNoteInput(''); setPaidAmountUSDInput(''); }}
                   className="text-sm text-gray-500 hover:text-gray-700"
                 >
                   Cancel
@@ -886,7 +966,7 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
             <div className="flex items-center justify-between">
               <span className="text-sm text-green-800">Received payment for this invoice?</span>
               <button
-                onClick={() => { setPaidDateInput(today()); setPaymentNoteInput(''); setShowPaidPicker(true); }}
+                onClick={() => { setPaidDateInput(today()); setPaymentNoteInput(''); setPaidAmountUSDInput(''); setShowPaidPicker(true); }}
                 className="bg-green-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-green-700"
               >
                 Mark as Paid

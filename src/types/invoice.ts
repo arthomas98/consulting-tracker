@@ -30,6 +30,7 @@ export interface Invoice {
   lineItems?: LineItem[];
   detailLevel?: InvoiceDetailLevel;
   exchangeRateToUSD?: number;
+  paidAmountUSD?: number;
   billToNameOverride?: string;
   billToAddressOverride?: string;
   bankIdOverride?: string;

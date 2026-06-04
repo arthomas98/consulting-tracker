@@ -4,6 +4,7 @@ import { totalsByCurrency, entryAmount, getEntryPaymentStatus, isFixedMonthly } 
 import { startOfMonth, endOfMonth, startOfYear, endOfYear, isInRange, formatDate, daysSince } from '../../utils/dateUtils';
 import { formatCurrency, formatHours } from '../../utils/formatCurrency';
 import { exportTimeEntriesCsv, exportInvoicesCsv, downloadCsv } from '../../utils/csv';
+import { invoiceUSDValue } from '../../utils/exchangeRate';
 import type { Currency } from '../../types';
 import Badge from '../shared/Badge';
 
@@ -391,18 +392,27 @@ export default function ReportsPage() {
                       <th className="text-left px-4 py-2 font-medium">Invoice #</th>
                       <th className="text-left px-4 py-2 font-medium">Company</th>
                       <th className="text-right px-4 py-2 font-medium">Amount</th>
+                      <th className="text-right px-4 py-2 font-medium">USD</th>
                       <th className="text-left px-4 py-2 font-medium">Paid Date</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
-                    {paidInvoices.map((inv) => (
-                      <tr key={inv.id}>
-                        <td className="px-4 py-2">{inv.invoiceNumber}</td>
-                        <td className="px-4 py-2">{companyMap.get(inv.companyId)?.name}</td>
-                        <td className="px-4 py-2 text-right font-medium">{formatCurrency(inv.totalAmount, inv.currency)}</td>
-                        <td className="px-4 py-2 text-gray-500">{inv.paidDate ? formatDate(inv.paidDate) : ''}</td>
-                      </tr>
-                    ))}
+                    {paidInvoices.map((inv) => {
+                      const usd = invoiceUSDValue(inv);
+                      const adjusted = inv.currency !== 'USD' && inv.paidAmountUSD != null;
+                      return (
+                        <tr key={inv.id}>
+                          <td className="px-4 py-2">{inv.invoiceNumber}</td>
+                          <td className="px-4 py-2">{companyMap.get(inv.companyId)?.name}</td>
+                          <td className="px-4 py-2 text-right font-medium">{formatCurrency(inv.totalAmount, inv.currency)}</td>
+                          <td className="px-4 py-2 text-right tabular-nums">
+                            {usd != null ? formatCurrency(usd, 'USD') : <span className="text-gray-400">—</span>}
+                            {adjusted && <span className="ml-1 text-xs text-emerald-600" title="FX-adjusted at payment time">●</span>}
+                          </td>
+                          <td className="px-4 py-2 text-gray-500">{inv.paidDate ? formatDate(inv.paidDate) : ''}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
