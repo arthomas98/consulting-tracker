@@ -881,7 +881,7 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
         <p className="text-xs text-amber-600 bg-amber-50 px-3 py-2 rounded-md">{rateWarning}</p>
       )}
 
-      {invoice.status === 'sent' && (
+      {(invoice.status === 'sent' || invoice.status === 'paid') && (
         <div className="bg-green-50 border border-green-200 rounded-lg p-4">
           {showPaidPicker ? (
             <div className="space-y-2">
@@ -952,7 +952,7 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
                   }}
                   className="bg-green-600 text-white px-4 py-1.5 rounded-md text-sm font-medium hover:bg-green-700"
                 >
-                  Confirm Paid
+                  {invoice.status === 'paid' ? 'Save Payment' : 'Confirm Paid'}
                 </button>
                 <button
                   onClick={() => { setShowPaidPicker(false); setPaymentNoteInput(''); setPaidAmountUSDInput(''); }}
@@ -962,7 +962,7 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
                 </button>
               </div>
             </div>
-          ) : (
+          ) : invoice.status === 'sent' ? (
             <div className="flex items-center justify-between">
               <span className="text-sm text-green-800">Received payment for this invoice?</span>
               <button
@@ -970,6 +970,21 @@ export default function InvoiceDetail({ invoice, onClose }: Props) {
                 className="bg-green-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-green-700"
               >
                 Mark as Paid
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-green-800">Need to adjust this payment?</span>
+              <button
+                onClick={() => {
+                  setPaidDateInput(invoice.paidDate ?? today());
+                  setPaymentNoteInput(invoice.paymentNote ?? '');
+                  setPaidAmountUSDInput(invoice.paidAmountUSD != null ? String(invoice.paidAmountUSD) : '');
+                  setShowPaidPicker(true);
+                }}
+                className="bg-white border border-green-300 text-green-800 px-4 py-2 rounded-md text-sm font-medium hover:bg-green-100"
+              >
+                Edit Payment
               </button>
             </div>
           )}
