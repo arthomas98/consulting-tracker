@@ -11,6 +11,15 @@ import Modal from '../shared/Modal';
 
 const CHANGELOG: { version: string; date: string; changes: string[] }[] = [
   {
+    version: '1.5.13',
+    date: '2026-07-19',
+    changes: [
+      'Sync fix: Google Sheets backup now round-trips every field — invoice line items, detail level, payment notes, Bill To / bank overrides, and company billing address / VAT settings / bank ID were silently dropped when data traveled through the sheet to another machine',
+      'Sync fix: connecting on a machine with existing local data now pulls and merges with the sheet instead of overwriting it (previously discarded anything another machine had pushed since)',
+      'Sync fix: conflict detection now uses exact metadata comparison (etag-style) instead of timestamp ordering — clock skew between machines could make a push miss remote changes and overwrite them',
+    ],
+  },
+  {
     version: '1.5.12',
     date: '2026-06-04',
     changes: [
@@ -634,7 +643,7 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">Dashboard</h2>
-        <button onClick={() => setShowChangelog(true)} className="text-xs text-gray-400 hover:text-blue-600 transition-colors">v1.5.12</button>
+        <button onClick={() => setShowChangelog(true)} className="text-xs text-gray-400 hover:text-blue-600 transition-colors">v1.5.13</button>
       </div>
       <p className="text-sm text-gray-500 -mt-4">
         New here? Check out the <Link to="/getting-started" className="text-blue-600 hover:text-blue-800 font-medium">Getting Started</Link> guide.

@@ -223,12 +223,12 @@ export function SyncProvider({ children }: { children: ReactNode }) {
         console.log('[Sync] Existing spreadsheet ID:', getSpreadsheetId());
       }
 
-      // If we found a spreadsheet and local data is empty, pull from Sheets
       const { companies, timeEntries } = storageRef.current;
       console.log('[Sync] Local data: companies=%d, timeEntries=%d, spreadsheetId=%s',
         companies.length, timeEntries.length, getSpreadsheetId());
 
       if (getSpreadsheetId() && companies.length === 0 && timeEntries.length === 0) {
+        // Local is empty — take the remote as-is
         console.log('[Sync] Local empty, pulling from Sheets...');
         setSyncStatus((s) => ({ ...s, state: 'pulling' }));
         const data = await pullFromSheets();
@@ -238,9 +238,27 @@ export function SyncProvider({ children }: { children: ReactNode }) {
           writeAll(data);
           storageRef.current.refresh();
         }
+      } else if (getSpreadsheetId()) {
+        // Local and remote both may have data. On connect we have no reliable
+        // lastSync marker (disconnect clears it), so a plain push would
+        // clear-and-replace the sheet and destroy anything another machine
+        // pushed since this one last synced. Always pull, merge, then push
+        // the merged result.
+        console.log('[Sync] Local has data, merging with Sheets...');
+        setSyncStatus((s) => ({ ...s, state: 'pulling' }));
+        const remoteData = await pullFromSheets();
+        const { companies: c, projects, timeEntries: te, invoices, expenses, profile } = storageRef.current;
+        const localData = { companies: c, projects, timeEntries: te, invoices, expenses, profile };
+        const merged = remoteData ? mergeData(localData, remoteData) : localData;
+        // Save merged locally first (safe even if the push fails)
+        writeAll(merged);
+        storageRef.current.refresh();
+        setSyncStatus((s) => ({ ...s, state: 'pushing' }));
+        await syncToSheets(merged);
+        console.log('[Sync] Merge + push complete');
       } else {
-        // Push current local data to Sheets
-        console.log('[Sync] Pushing local data to Sheets...');
+        // No spreadsheet anywhere — create one from local data
+        console.log('[Sync] No spreadsheet, creating and pushing local data...');
         const { companies: c, projects, timeEntries: te, invoices, expenses, profile } = storageRef.current;
         await syncToSheets({ companies: c, projects, timeEntries: te, invoices, expenses, profile });
         console.log('[Sync] Push complete');

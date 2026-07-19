@@ -232,24 +232,21 @@ export async function checkForConflict(spreadsheetId: string): Promise<{
   remoteData: SyncData | null;
 }> {
   const localLastSync = getLastSyncTime();
-  if (!localLastSync) {
-    // First sync or after reconnect — no conflict possible
-    return { hasConflict: false, remoteData: null };
-  }
-
   const remoteLastModified = await readRemoteLastModified(spreadsheetId);
-  if (!remoteLastModified) {
-    // No metadata on remote — legacy spreadsheet, no conflict
+
+  // Etag semantics: localLastSync is a copy of the remote metadata value this
+  // machine last wrote or read, so ANY difference means another machine may
+  // have touched the sheet — pull and merge. Never compare by ordering
+  // (remote > local): clock skew between machines makes a "newer than" check
+  // miss real changes and blind-overwrite them. A missing value on either
+  // side (first sync after reconnect, legacy sheet without _Metadata) also
+  // means we can't prove the sheet is unchanged, so merge to be safe.
+  if (remoteLastModified && localLastSync && remoteLastModified === localLastSync) {
     return { hasConflict: false, remoteData: null };
   }
 
-  if (remoteLastModified > localLastSync) {
-    // Remote was modified since our last sync — conflict
-    const remoteData = await pullFromSheets();
-    return { hasConflict: true, remoteData };
-  }
-
-  return { hasConflict: false, remoteData: null };
+  const remoteData = await pullFromSheets();
+  return { hasConflict: true, remoteData };
 }
 
 export async function syncToSheets(data: SyncData): Promise<string> {
