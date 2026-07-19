@@ -11,6 +11,14 @@ import Modal from '../shared/Modal';
 
 const CHANGELOG: { version: string; date: string; changes: string[] }[] = [
   {
+    version: '1.5.15',
+    date: '2026-07-19',
+    changes: [
+      'Sync fix: pushing to Google Sheets is now a single atomic batchUpdate (resize grid + overwrite cells + metadata timestamp, all-or-nothing) instead of clear-then-write across 8 sequential API calls — an interrupted push can no longer leave the backup empty, partially written, or with data/timestamp mismatched',
+      'Merge hardening: duplicate rows for the same ID (hand edits or leftovers from previously interrupted syncs) resolve to the newest, and rows missing an Updated timestamp always lose to intact records',
+    ],
+  },
+  {
     version: '1.5.14',
     date: '2026-07-19',
     changes: [
@@ -651,7 +659,7 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">Dashboard</h2>
-        <button onClick={() => setShowChangelog(true)} className="text-xs text-gray-400 hover:text-blue-600 transition-colors">v1.5.14</button>
+        <button onClick={() => setShowChangelog(true)} className="text-xs text-gray-400 hover:text-blue-600 transition-colors">v1.5.15</button>
       </div>
       <p className="text-sm text-gray-500 -mt-4">
         New here? Check out the <Link to="/getting-started" className="text-blue-600 hover:text-blue-800 font-medium">Getting Started</Link> guide.

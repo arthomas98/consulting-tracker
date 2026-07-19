@@ -34,7 +34,9 @@ export function clearLastSyncTime(): void {
   localStorage.removeItem(LAST_SYNC_KEY);
 }
 
-async function createSpreadsheet(): Promise<string> {
+type SheetProps = { properties: { sheetId: number; title: string } };
+
+async function createSpreadsheet(): Promise<{ id: string; sheetIds: Map<string, number> }> {
   const response = await gapi.client.sheets.spreadsheets.create({
     resource: {
       properties: { title: 'Consulting Tracker Backup' },
@@ -45,31 +47,35 @@ async function createSpreadsheet(): Promise<string> {
   });
   const id = response.result.spreadsheetId;
   setSpreadsheetId(id);
-  return id;
+  const sheetIds = new Map<string, number>(
+    (response.result.sheets || []).map((s: SheetProps) => [s.properties.title, s.properties.sheetId])
+  );
+  return { id, sheetIds };
 }
 
-async function ensureSheets(spreadsheetId: string): Promise<void> {
-  // Get existing sheet names
+// Ensure all sheets exist (in case the user deleted one) and return the
+// title -> numeric sheetId mapping needed for batchUpdate cell writes.
+async function ensureSheets(spreadsheetId: string): Promise<Map<string, number>> {
   const resp = await gapi.client.request({
-    path: `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}`,
+    path: `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=${encodeURIComponent('sheets.properties(sheetId,title)')}`,
     method: 'GET',
   });
-  const existingNames = new Set(
-    resp.result.sheets.map((s: { properties: { title: string } }) => s.properties.title)
+  const sheetIds = new Map<string, number>(
+    resp.result.sheets.map((s: SheetProps) => [s.properties.title, s.properties.sheetId])
   );
 
-  // Add missing sheets
-  const requests = SHEET_NAMES
-    .filter((name) => !existingNames.has(name))
-    .map((title) => ({ addSheet: { properties: { title } } }));
-
-  if (requests.length > 0) {
-    await gapi.client.request({
+  const missing = SHEET_NAMES.filter((name) => !sheetIds.has(name));
+  if (missing.length > 0) {
+    const addResp = await gapi.client.request({
       path: `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`,
       method: 'POST',
-      body: { requests },
+      body: { requests: missing.map((title) => ({ addSheet: { properties: { title } } })) },
     });
+    for (const reply of addResp.result.replies as { addSheet: SheetProps }[]) {
+      sheetIds.set(reply.addSheet.properties.title, reply.addSheet.properties.sheetId);
+    }
   }
+  return sheetIds;
 }
 
 export interface SyncData {
@@ -101,26 +107,6 @@ async function readRemoteLastModified(spreadsheetId: string): Promise<string | n
   }
 }
 
-async function writeRemoteLastModified(spreadsheetId: string, iso: string): Promise<void> {
-  // Clear then write
-  try {
-    await gapi.client.request({
-      path: `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('_Metadata!A:Z')}:clear`,
-      method: 'POST',
-      body: {},
-    });
-  } catch {
-    // Ignore if sheet doesn't exist yet
-  }
-  await gapi.client.request({
-    path: `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('_Metadata!A1')}?valueInputOption=RAW`,
-    method: 'PUT',
-    body: {
-      values: [['Key', 'Value'], ['lastModified', iso]],
-    },
-  });
-}
-
 // --- Merge algorithm ---
 
 // How long deleted records (deletedAt tombstones) are kept before being
@@ -134,15 +120,23 @@ function purgeExpiredTombstones<T extends { deletedAt?: string }>(records: T[]):
 }
 
 function mergeArray<T extends { id: string; updatedAt: string }>(local: T[], remote: T[]): T[] {
+  // Coerce a missing updatedAt (hand-edited sheet row) to '' so it always
+  // loses — `iso >= undefined` is false, which would let a corrupt row win.
+  const ts = (x: T) => x.updatedAt || '';
   const map = new Map<string, T>();
-  // Start with remote records
+  // Start with remote records. A sheet can contain duplicate rows for one id
+  // (hand edits, or leftovers from a sync interrupted before v1.5.15) — keep
+  // the newest.
   for (const r of remote) {
-    map.set(r.id, r);
+    const prev = map.get(r.id);
+    if (!prev || ts(r) >= ts(prev)) {
+      map.set(r.id, r);
+    }
   }
   // Overlay local — newer wins, ties go to local
   for (const l of local) {
     const existing = map.get(l.id);
-    if (!existing || l.updatedAt >= existing.updatedAt) {
+    if (!existing || ts(l) >= ts(existing)) {
       map.set(l.id, l);
     }
   }
@@ -266,47 +260,59 @@ export async function checkForConflict(spreadsheetId: string): Promise<{
 
 export async function syncToSheets(data: SyncData): Promise<string> {
   let spreadsheetId = getSpreadsheetId();
+  let sheetIds: Map<string, number>;
 
   if (!spreadsheetId) {
-    spreadsheetId = await createSpreadsheet();
+    const created = await createSpreadsheet();
+    spreadsheetId = created.id;
+    sheetIds = created.sheetIds;
   } else {
-    // Ensure all sheets exist (in case user deleted one)
-    await ensureSheets(spreadsheetId);
+    sheetIds = await ensureSheets(spreadsheetId);
   }
 
-  // Clear data sheets (not _Metadata — we write that separately)
-  for (const name of DATA_SHEET_NAMES) {
-    try {
-      await gapi.client.sheets.spreadsheets.values.clear({
-        spreadsheetId,
-        range: `${name}!A:Z`,
-      });
-    } catch {
-      // Sheet might not exist yet, ignore
-    }
-  }
-
-  // Write all data
-  const allData = [
-    { range: 'Companies!A1', values: companiesToRows(data.companies) },
-    { range: 'Projects!A1', values: projectsToRows(data.projects) },
-    { range: 'TimeEntries!A1', values: timeEntriesToRows(data.timeEntries) },
-    { range: 'Invoices!A1', values: invoicesToRows(data.invoices) },
-    { range: 'Expenses!A1', values: expensesToRows(data.expenses) },
-    { range: 'Profile!A1', values: profileToRows(data.profile) },
+  const now = new Date().toISOString();
+  const sheetData: [string, string[][]][] = [
+    ['Companies', companiesToRows(data.companies)],
+    ['Projects', projectsToRows(data.projects)],
+    ['TimeEntries', timeEntriesToRows(data.timeEntries)],
+    ['Invoices', invoicesToRows(data.invoices)],
+    ['Expenses', expensesToRows(data.expenses)],
+    ['Profile', profileToRows(data.profile)],
+    ['_Metadata', [['Key', 'Value'], ['lastModified', now]]],
   ];
 
-  await gapi.client.sheets.spreadsheets.values.batchUpdate({
-    spreadsheetId,
-    resource: {
-      valueInputOption: 'RAW',
-      data: allData,
-    },
+  // Single atomic batchUpdate for everything: resize each sheet's grid to
+  // exactly the new data (which also trims any stale rows/columns) and
+  // overwrite its cells, for all data sheets plus the _Metadata timestamp.
+  // The Sheets API applies a batchUpdate all-or-nothing, so an interrupted
+  // push can no longer leave the backup empty or partially written, and the
+  // data can never disagree with the metadata timestamp (the previous
+  // clear-then-write sequence could do both if it died between calls).
+  const requests = sheetData.flatMap(([name, rows]) => {
+    const sheetId = sheetIds.get(name);
+    return [
+      {
+        updateSheetProperties: {
+          properties: { sheetId, gridProperties: { rowCount: rows.length, columnCount: rows[0].length } },
+          fields: 'gridProperties.rowCount,gridProperties.columnCount',
+        },
+      },
+      {
+        updateCells: {
+          range: { sheetId },
+          rows: rows.map((row) => ({ values: row.map((v) => ({ userEnteredValue: { stringValue: v } })) })),
+          fields: 'userEnteredValue',
+        },
+      },
+    ];
   });
 
-  // Write metadata timestamp and record locally
-  const now = new Date().toISOString();
-  await writeRemoteLastModified(spreadsheetId, now);
+  await gapi.client.request({
+    path: `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`,
+    method: 'POST',
+    body: { requests },
+  });
+
   setLastSyncTime(now);
 
   return spreadsheetId;

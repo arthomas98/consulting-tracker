@@ -24,17 +24,12 @@ declare namespace gapi {
     function getToken(): { access_token: string } | null;
     function setToken(token: null): void;
     namespace sheets.spreadsheets {
-      function create(params: { resource: any }): Promise<{ result: { spreadsheetId: string } }>;
-      namespace values {
-        function batchUpdate(params: {
+      function create(params: { resource: any }): Promise<{
+        result: {
           spreadsheetId: string;
-          resource: any;
-        }): Promise<any>;
-        function clear(params: {
-          spreadsheetId: string;
-          range: string;
-        }): Promise<any>;
-      }
+          sheets?: { properties: { sheetId: number; title: string } }[];
+        };
+      }>;
     }
     function request(params: { path: string; method: string; body?: any; params?: Record<string, string> }): Promise<any>;
   }
