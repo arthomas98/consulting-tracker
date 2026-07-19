@@ -48,4 +48,6 @@ export interface Expense {
   notes?: string;
   createdAt: string;
   updatedAt: string;
+  // Tombstone — see Company.deletedAt
+  deletedAt?: string;
 }

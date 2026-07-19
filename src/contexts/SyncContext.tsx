@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { useStorage } from './StorageContext';
-import { writeAll } from '../utils/storage';
+import { writeAll, getSyncSnapshot } from '../utils/storage';
 import { initGapi, initGis, requestAccessToken, revokeToken, hasValidToken } from '../services/googleAuth';
 import {
   syncToSheets, pullFromSheets, findSpreadsheet,
@@ -99,18 +99,19 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       const spreadsheetId = getSpreadsheetId();
       if (!spreadsheetId) return;
 
-      const { companies, projects, timeEntries, invoices, expenses, profile } = storageRef.current;
+      // Raw snapshot including tombstones — React state holds only live
+      // records, and a push without tombstones stops deletions propagating
+      const localData = getSyncSnapshot();
 
-      // Safety: never push empty data over an existing spreadsheet
-      if (companies.length === 0 && timeEntries.length === 0) {
+      // Safety: never push empty data over an existing spreadsheet.
+      // Tombstones count as data — "user deleted everything" must sync.
+      if (localData.companies.length === 0 && localData.timeEntries.length === 0) {
         console.log('[Sync] Skipping push — local data is empty');
         if (mountedRef.current) {
           setSyncStatus((s) => ({ ...s, state: 'idle' }));
         }
         return;
       }
-
-      const localData = { companies, projects, timeEntries, invoices, expenses, profile };
 
       // Check for conflict before pushing
       const { hasConflict, remoteData } = await checkForConflict(spreadsheetId);
@@ -223,11 +224,12 @@ export function SyncProvider({ children }: { children: ReactNode }) {
         console.log('[Sync] Existing spreadsheet ID:', getSpreadsheetId());
       }
 
-      const { companies, timeEntries } = storageRef.current;
+      // Raw snapshot including tombstones (see doPush)
+      const snapshot = getSyncSnapshot();
       console.log('[Sync] Local data: companies=%d, timeEntries=%d, spreadsheetId=%s',
-        companies.length, timeEntries.length, getSpreadsheetId());
+        snapshot.companies.length, snapshot.timeEntries.length, getSpreadsheetId());
 
-      if (getSpreadsheetId() && companies.length === 0 && timeEntries.length === 0) {
+      if (getSpreadsheetId() && snapshot.companies.length === 0 && snapshot.timeEntries.length === 0) {
         // Local is empty — take the remote as-is
         console.log('[Sync] Local empty, pulling from Sheets...');
         setSyncStatus((s) => ({ ...s, state: 'pulling' }));
@@ -247,9 +249,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
         console.log('[Sync] Local has data, merging with Sheets...');
         setSyncStatus((s) => ({ ...s, state: 'pulling' }));
         const remoteData = await pullFromSheets();
-        const { companies: c, projects, timeEntries: te, invoices, expenses, profile } = storageRef.current;
-        const localData = { companies: c, projects, timeEntries: te, invoices, expenses, profile };
-        const merged = remoteData ? mergeData(localData, remoteData) : localData;
+        const merged = remoteData ? mergeData(snapshot, remoteData) : snapshot;
         // Save merged locally first (safe even if the push fails)
         writeAll(merged);
         storageRef.current.refresh();
@@ -259,8 +259,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       } else {
         // No spreadsheet anywhere — create one from local data
         console.log('[Sync] No spreadsheet, creating and pushing local data...');
-        const { companies: c, projects, timeEntries: te, invoices, expenses, profile } = storageRef.current;
-        await syncToSheets({ companies: c, projects, timeEntries: te, invoices, expenses, profile });
+        await syncToSheets(snapshot);
         console.log('[Sync] Push complete');
       }
 

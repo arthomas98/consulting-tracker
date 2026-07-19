@@ -46,79 +46,106 @@ function write<T>(key: string, data: T[]): void {
   localStorage.setItem(key, JSON.stringify(data));
 }
 
+// Deletions are tombstones (deletedAt set), not removals: sync merges have no
+// other way to tell "deleted here" from "created on the other machine", so a
+// hard delete resurrects on the next merge. Raw readers include tombstones
+// (sync needs them); public getters filter to live records for the UI. Save
+// and delete functions therefore MUST operate on the raw arrays — writing a
+// live-filtered array back would drop every tombstone.
+
+type Tombstoned = { deletedAt?: string };
+
+function isLive<T extends Tombstoned>(record: T): boolean {
+  return !record.deletedAt;
+}
+
+function upsertRaw<T extends { id: string }>(all: T[], record: T): T[] {
+  const idx = all.findIndex((x) => x.id === record.id);
+  return idx >= 0 ? all.map((x) => (x.id === record.id ? record : x)) : [...all, record];
+}
+
+function tombstoneRaw<T extends { id: string; updatedAt: string } & Tombstoned>(all: T[], id: string): T[] {
+  const now = new Date().toISOString();
+  return all.map((x) => (x.id === id ? { ...x, deletedAt: now, updatedAt: now } : x));
+}
+
 // Companies
-export function getCompanies(): Company[] {
+function readRawCompanies(): Company[] {
   return read<Company>(KEYS.companies).map((c) => ({
     ...c,
     billingType: c.billingType || 'hourly',
   }));
 }
 
+export function getCompanies(): Company[] {
+  return readRawCompanies().filter(isLive);
+}
+
 export function saveCompany(company: Company): Company[] {
-  const companies = getCompanies();
-  const idx = companies.findIndex((c) => c.id === company.id);
-  const updated = idx >= 0
-    ? companies.map((c) => (c.id === company.id ? company : c))
-    : [...companies, company];
+  const updated = upsertRaw(readRawCompanies(), company);
   write(KEYS.companies, updated);
-  return updated;
+  return updated.filter(isLive);
 }
 
 export function deleteCompany(id: string): Company[] {
-  const updated = getCompanies().filter((c) => c.id !== id);
+  const updated = tombstoneRaw(readRawCompanies(), id);
   write(KEYS.companies, updated);
-  return updated;
+  return updated.filter(isLive);
 }
 
 // Projects
-export function getProjects(): Project[] {
+function readRawProjects(): Project[] {
   return read<Project>(KEYS.projects);
 }
 
+export function getProjects(): Project[] {
+  return readRawProjects().filter(isLive);
+}
+
 export function saveProject(project: Project): Project[] {
-  const projects = getProjects();
-  const idx = projects.findIndex((p) => p.id === project.id);
-  const updated = idx >= 0
-    ? projects.map((p) => (p.id === project.id ? project : p))
-    : [...projects, project];
+  const updated = upsertRaw(readRawProjects(), project);
   write(KEYS.projects, updated);
-  return updated;
+  return updated.filter(isLive);
 }
 
 export function deleteProject(id: string): Project[] {
-  const updated = getProjects().filter((p) => p.id !== id);
+  const updated = tombstoneRaw(readRawProjects(), id);
   write(KEYS.projects, updated);
-  return updated;
+  return updated.filter(isLive);
 }
 
 // Time Entries
-export function getTimeEntries(): TimeEntry[] {
+function readRawTimeEntries(): TimeEntry[] {
   return read<TimeEntry>(KEYS.timeEntries);
 }
 
+export function getTimeEntries(): TimeEntry[] {
+  return readRawTimeEntries().filter(isLive);
+}
+
 export function saveTimeEntry(entry: TimeEntry): TimeEntry[] {
-  const entries = getTimeEntries();
-  const idx = entries.findIndex((e) => e.id === entry.id);
-  const updated = idx >= 0
-    ? entries.map((e) => (e.id === entry.id ? entry : e))
-    : [...entries, entry];
+  const updated = upsertRaw(readRawTimeEntries(), entry);
   write(KEYS.timeEntries, updated);
-  return updated;
+  return updated.filter(isLive);
 }
 
 export function deleteTimeEntry(id: string): TimeEntry[] {
-  const updated = getTimeEntries().filter((e) => e.id !== id);
+  const updated = tombstoneRaw(readRawTimeEntries(), id);
   write(KEYS.timeEntries, updated);
-  return updated;
+  return updated.filter(isLive);
 }
 
 export function saveTimeEntries(entries: TimeEntry[]): TimeEntry[] {
-  write(KEYS.timeEntries, entries);
-  return entries;
+  // Bulk replace of the live set — carry existing tombstones through
+  const tombstones = readRawTimeEntries().filter(
+    (e) => e.deletedAt && !entries.some((n) => n.id === e.id)
+  );
+  write(KEYS.timeEntries, [...entries, ...tombstones]);
+  return entries.filter(isLive);
 }
 
 // Invoices
-export function getInvoices(): Invoice[] {
+function readRawInvoices(): Invoice[] {
   return read<Invoice>(KEYS.invoices).map((i) => ({
     ...i,
     billingType: i.billingType || 'hourly',
@@ -126,41 +153,63 @@ export function getInvoices(): Invoice[] {
   }));
 }
 
+export function getInvoices(): Invoice[] {
+  return readRawInvoices().filter(isLive);
+}
+
 export function saveInvoice(invoice: Invoice): Invoice[] {
-  const invoices = getInvoices();
-  const idx = invoices.findIndex((i) => i.id === invoice.id);
-  const updated = idx >= 0
-    ? invoices.map((i) => (i.id === invoice.id ? invoice : i))
-    : [...invoices, invoice];
+  const updated = upsertRaw(readRawInvoices(), invoice);
   write(KEYS.invoices, updated);
-  return updated;
+  return updated.filter(isLive);
 }
 
 export function deleteInvoice(id: string): Invoice[] {
-  const updated = getInvoices().filter((i) => i.id !== id);
+  const updated = tombstoneRaw(readRawInvoices(), id);
   write(KEYS.invoices, updated);
-  return updated;
+  return updated.filter(isLive);
 }
 
 // Expenses
-export function getExpenses(): Expense[] {
+function readRawExpenses(): Expense[] {
   return read<Expense>(KEYS.expenses);
 }
 
+export function getExpenses(): Expense[] {
+  return readRawExpenses().filter(isLive);
+}
+
 export function saveExpense(expense: Expense): Expense[] {
-  const expenses = getExpenses();
-  const idx = expenses.findIndex((e) => e.id === expense.id);
-  const updated = idx >= 0
-    ? expenses.map((e) => (e.id === expense.id ? expense : e))
-    : [...expenses, expense];
+  const updated = upsertRaw(readRawExpenses(), expense);
   write(KEYS.expenses, updated);
-  return updated;
+  return updated.filter(isLive);
 }
 
 export function deleteExpense(id: string): Expense[] {
-  const updated = getExpenses().filter((e) => e.id !== id);
+  const updated = tombstoneRaw(readRawExpenses(), id);
   write(KEYS.expenses, updated);
-  return updated;
+  return updated.filter(isLive);
+}
+
+// Full raw snapshot including tombstones — this is what sync must push/merge.
+// The React state in StorageContext holds only live records, so building a
+// sync payload from there would strip tombstones and deletions would stop
+// propagating.
+export function getSyncSnapshot(): {
+  companies: Company[];
+  projects: Project[];
+  timeEntries: TimeEntry[];
+  invoices: Invoice[];
+  expenses: Expense[];
+  profile: BusinessProfile;
+} {
+  return {
+    companies: readRawCompanies(),
+    projects: readRawProjects(),
+    timeEntries: readRawTimeEntries(),
+    invoices: readRawInvoices(),
+    expenses: readRawExpenses(),
+    profile: getProfile(),
+  };
 }
 
 // Bulk write (used when pulling from Sheets)

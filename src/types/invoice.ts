@@ -36,4 +36,6 @@ export interface Invoice {
   bankIdOverride?: string;
   createdAt: string;
   updatedAt: string;
+  // Tombstone — see Company.deletedAt
+  deletedAt?: string;
 }

@@ -22,4 +22,7 @@ export interface Company {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  // Tombstone: set instead of hard-deleting so deletions propagate through
+  // sync instead of resurrecting. Filtered out of all UI reads.
+  deletedAt?: string;
 }

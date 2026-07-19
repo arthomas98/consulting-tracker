@@ -11,6 +11,14 @@ import Modal from '../shared/Modal';
 
 const CHANGELOG: { version: string; date: string; changes: string[] }[] = [
   {
+    version: '1.5.14',
+    date: '2026-07-19',
+    changes: [
+      'Sync fix: deletions no longer resurrect after a merge — deletes are now tombstones (hidden records with a deletedAt stamp) that propagate through Google Sheets sync like any other change, then auto-purge after 90 days',
+      'Sync payloads now come from a raw localStorage snapshot (including tombstones) instead of React state, and same-name company/project dedup skips deleted records so a re-created company can\'t be merged into its deleted predecessor',
+    ],
+  },
+  {
     version: '1.5.13',
     date: '2026-07-19',
     changes: [
@@ -643,7 +651,7 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">Dashboard</h2>
-        <button onClick={() => setShowChangelog(true)} className="text-xs text-gray-400 hover:text-blue-600 transition-colors">v1.5.13</button>
+        <button onClick={() => setShowChangelog(true)} className="text-xs text-gray-400 hover:text-blue-600 transition-colors">v1.5.14</button>
       </div>
       <p className="text-sm text-gray-500 -mt-4">
         New here? Check out the <Link to="/getting-started" className="text-blue-600 hover:text-blue-800 font-medium">Getting Started</Link> guide.

@@ -123,6 +123,16 @@ async function writeRemoteLastModified(spreadsheetId: string, iso: string): Prom
 
 // --- Merge algorithm ---
 
+// How long deleted records (deletedAt tombstones) are kept before being
+// purged during a merge. A machine that hasn't synced for longer than this
+// can resurrect the record — keep it generous.
+const TOMBSTONE_RETENTION_DAYS = 90;
+
+function purgeExpiredTombstones<T extends { deletedAt?: string }>(records: T[]): T[] {
+  const cutoff = new Date(Date.now() - TOMBSTONE_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  return records.filter((r) => !r.deletedAt || r.deletedAt > cutoff);
+}
+
 function mergeArray<T extends { id: string; updatedAt: string }>(local: T[], remote: T[]): T[] {
   const map = new Map<string, T>();
   // Start with remote records
@@ -141,9 +151,13 @@ function mergeArray<T extends { id: string; updatedAt: string }>(local: T[], rem
 
 // Deduplicate companies with the same name but different IDs (from multi-device creation).
 // Keeps the newer record (by updatedAt) and remaps all references from the duplicate ID.
+// Tombstoned records don't participate: a deleted "Acme" must neither absorb nor be
+// absorbed by a live one (e.g. deleted and re-created with the same name).
 function deduplicateCompanies(data: SyncData): SyncData {
   const byName = new Map<string, Company[]>();
+  const survivingCompanies: Company[] = data.companies.filter((c) => c.deletedAt);
   for (const c of data.companies) {
+    if (c.deletedAt) continue;
     const key = c.name.trim().toLowerCase();
     const group = byName.get(key) || [];
     group.push(c);
@@ -152,7 +166,6 @@ function deduplicateCompanies(data: SyncData): SyncData {
 
   // Build a remap: duplicateId -> survivorId
   const idRemap = new Map<string, string>();
-  const survivingCompanies: Company[] = [];
 
   for (const group of byName.values()) {
     if (group.length === 1) {
@@ -176,16 +189,18 @@ function deduplicateCompanies(data: SyncData): SyncData {
   const remap = (id: string) => idRemap.get(id) || id;
   const remappedProjects = data.projects.map((p) => idRemap.has(p.companyId) ? { ...p, companyId: remap(p.companyId) } : p);
 
-  // Also deduplicate projects with the same name under the same (remapped) company
+  // Also deduplicate projects with the same name under the same (remapped) company.
+  // As with companies, tombstoned projects pass through untouched.
   const projectRemap = new Map<string, string>();
   const byCompanyAndName = new Map<string, Project[]>();
   for (const p of remappedProjects) {
+    if (p.deletedAt) continue;
     const key = `${p.companyId}::${p.name.trim().toLowerCase()}`;
     const group = byCompanyAndName.get(key) || [];
     group.push(p);
     byCompanyAndName.set(key, group);
   }
-  const survivingProjects: Project[] = [];
+  const survivingProjects: Project[] = remappedProjects.filter((p) => p.deletedAt);
   for (const group of byCompanyAndName.values()) {
     if (group.length === 1) {
       survivingProjects.push(group[0]);
@@ -215,11 +230,11 @@ function deduplicateCompanies(data: SyncData): SyncData {
 
 export function mergeData(local: SyncData, remote: SyncData): SyncData {
   const merged = {
-    companies: mergeArray(local.companies, remote.companies),
-    projects: mergeArray(local.projects, remote.projects),
-    timeEntries: mergeArray(local.timeEntries, remote.timeEntries),
-    invoices: mergeArray(local.invoices, remote.invoices),
-    expenses: mergeArray(local.expenses, remote.expenses),
+    companies: purgeExpiredTombstones(mergeArray(local.companies, remote.companies)),
+    projects: purgeExpiredTombstones(mergeArray(local.projects, remote.projects)),
+    timeEntries: purgeExpiredTombstones(mergeArray(local.timeEntries, remote.timeEntries)),
+    invoices: purgeExpiredTombstones(mergeArray(local.invoices, remote.invoices)),
+    expenses: purgeExpiredTombstones(mergeArray(local.expenses, remote.expenses)),
     profile: local.profile, // Local profile always wins
   };
   return deduplicateCompanies(merged);

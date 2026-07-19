@@ -10,4 +10,6 @@ export interface TimeEntry {
   paymentNote?: string;
   createdAt: string;
   updatedAt: string;
+  // Tombstone — see Company.deletedAt
+  deletedAt?: string;
 }

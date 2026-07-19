@@ -12,7 +12,7 @@ import type { BusinessProfile } from '../utils/storage';
 // the reverse mapper with header.includes().
 
 export function companiesToRows(companies: Company[]): string[][] {
-  const header = ['ID', 'Name', 'Currency', 'Hourly Rate', 'Invoice Required', 'Payment Terms', 'Payment Method', 'Contact Name', 'Contact Email', 'Notes', 'Active', 'Created', 'Updated', 'Billing Type', 'Monthly Rate', 'Next Invoice Number', 'Billing Address', 'VAT Reverse Charge', 'VAT Notice Text', 'Bank ID'];
+  const header = ['ID', 'Name', 'Currency', 'Hourly Rate', 'Invoice Required', 'Payment Terms', 'Payment Method', 'Contact Name', 'Contact Email', 'Notes', 'Active', 'Created', 'Updated', 'Billing Type', 'Monthly Rate', 'Next Invoice Number', 'Billing Address', 'VAT Reverse Charge', 'VAT Notice Text', 'Bank ID', 'Deleted At'];
   const rows = companies.map((c) => [
     c.id, c.name, c.currency, String(c.hourlyRate),
     c.invoiceRequired ? 'Yes' : 'No',
@@ -27,22 +27,24 @@ export function companiesToRows(companies: Company[]): string[][] {
     c.vatReverseCharge ? 'Yes' : '',
     c.vatNoticeText || '',
     c.bankId || '',
+    c.deletedAt || '',
   ]);
   return [header, ...rows];
 }
 
 export function projectsToRows(projects: Project[]): string[][] {
-  const header = ['ID', 'Company ID', 'Name', 'Active', 'Created', 'Updated'];
+  const header = ['ID', 'Company ID', 'Name', 'Active', 'Created', 'Updated', 'Deleted At'];
   const rows = projects.map((p) => [
     p.id, p.companyId, p.name,
     p.isActive ? 'Yes' : 'No',
     p.createdAt, p.updatedAt,
+    p.deletedAt || '',
   ]);
   return [header, ...rows];
 }
 
 export function timeEntriesToRows(entries: TimeEntry[]): string[][] {
-  const header = ['ID', 'Company ID', 'Project ID', 'Date', 'Hours', 'Fixed Amount', 'Description', 'Paid Date', 'Created', 'Updated', 'Payment Note'];
+  const header = ['ID', 'Company ID', 'Project ID', 'Date', 'Hours', 'Fixed Amount', 'Description', 'Paid Date', 'Created', 'Updated', 'Payment Note', 'Deleted At'];
   const rows = entries.map((e) => [
     e.id, e.companyId, e.projectId || '', e.date,
     String(e.hours),
@@ -50,12 +52,13 @@ export function timeEntriesToRows(entries: TimeEntry[]): string[][] {
     e.description, e.paidDate || '',
     e.createdAt, e.updatedAt,
     e.paymentNote || '',
+    e.deletedAt || '',
   ]);
   return [header, ...rows];
 }
 
 export function invoicesToRows(invoices: Invoice[]): string[][] {
-  const header = ['ID', 'Company ID', 'Invoice #', 'Date', 'Time Entry IDs', 'Total Hours', 'Total Amount', 'Currency', 'Rate Used', 'Status', 'Paid Date', 'Notes', 'Created', 'Updated', 'Billing Type', 'Retainer Month', 'Exchange Rate to USD', 'Paid Amount (USD)', 'Payment Note', 'Line Items (JSON)', 'Detail Level', 'Bill To Name Override', 'Bill To Address Override', 'Bank ID Override'];
+  const header = ['ID', 'Company ID', 'Invoice #', 'Date', 'Time Entry IDs', 'Total Hours', 'Total Amount', 'Currency', 'Rate Used', 'Status', 'Paid Date', 'Notes', 'Created', 'Updated', 'Billing Type', 'Retainer Month', 'Exchange Rate to USD', 'Paid Amount (USD)', 'Payment Note', 'Line Items (JSON)', 'Detail Level', 'Bill To Name Override', 'Bill To Address Override', 'Bank ID Override', 'Deleted At'];
   const rows = invoices.map((i) => [
     i.id, i.companyId, i.invoiceNumber || '', i.invoiceDate,
     i.timeEntryIds.join(';'),
@@ -73,6 +76,7 @@ export function invoicesToRows(invoices: Invoice[]): string[][] {
     i.billToNameOverride || '',
     i.billToAddressOverride || '',
     i.bankIdOverride || '',
+    i.deletedAt || '',
   ]);
   return [header, ...rows];
 }
@@ -101,6 +105,7 @@ export function rowsToCompanies(rows: string[][]): Company[] {
   const hasBillingAddress = header.includes('Billing Address');
   const hasVat = header.includes('VAT Reverse Charge');
   const hasBankId = header.includes('Bank ID');
+  const hasDeletedAt = header.includes('Deleted At');
   return rows.slice(1).map((r) => ({
     id: r[0],
     name: r[1],
@@ -122,11 +127,13 @@ export function rowsToCompanies(rows: string[][]): Company[] {
     vatReverseCharge: hasVat && r[17] === 'Yes' ? true : undefined,
     vatNoticeText: hasVat && r[18] ? r[18] : undefined,
     bankId: hasBankId && r[19] ? r[19] : undefined,
+    deletedAt: hasDeletedAt && r[20] ? r[20] : undefined,
   }));
 }
 
 export function rowsToProjects(rows: string[][]): Project[] {
   if (rows.length <= 1) return [];
+  const hasDeletedAt = rows[0].includes('Deleted At');
   return rows.slice(1).map((r) => ({
     id: r[0],
     companyId: r[1],
@@ -134,6 +141,7 @@ export function rowsToProjects(rows: string[][]): Project[] {
     isActive: r[3] !== 'No',
     createdAt: r[4],
     updatedAt: r[5],
+    deletedAt: hasDeletedAt && r[6] ? r[6] : undefined,
   }));
 }
 
@@ -141,6 +149,7 @@ export function rowsToTimeEntries(rows: string[][]): TimeEntry[] {
   if (rows.length <= 1) return [];
   const header = rows[0];
   const hasPaymentNote = header.includes('Payment Note');
+  const hasDeletedAt = header.includes('Deleted At');
   return rows.slice(1).map((r) => ({
     id: r[0],
     companyId: r[1],
@@ -153,6 +162,7 @@ export function rowsToTimeEntries(rows: string[][]): TimeEntry[] {
     createdAt: r[8],
     updatedAt: r[9],
     paymentNote: hasPaymentNote && r[10] ? r[10] : undefined,
+    deletedAt: hasDeletedAt && r[11] ? r[11] : undefined,
   }));
 }
 
@@ -175,6 +185,7 @@ export function rowsToInvoices(rows: string[][]): Invoice[] {
   const hasPaymentNote = header.includes('Payment Note');
   const hasLineItems = header.includes('Line Items (JSON)');
   const hasOverrides = header.includes('Bill To Name Override');
+  const hasDeletedAt = header.includes('Deleted At');
   return rows.slice(1).map((r) => ({
     id: r[0],
     companyId: r[1],
@@ -198,13 +209,14 @@ export function rowsToInvoices(rows: string[][]): Invoice[] {
     billToNameOverride: hasOverrides && r[21] ? r[21] : undefined,
     billToAddressOverride: hasOverrides && r[22] ? r[22] : undefined,
     bankIdOverride: hasOverrides && r[23] ? r[23] : undefined,
+    deletedAt: hasDeletedAt && r[24] ? r[24] : undefined,
     createdAt: r[12],
     updatedAt: r[13],
   }));
 }
 
 export function expensesToRows(expenses: Expense[]): string[][] {
-  const header = ['ID', 'Date', 'Category', 'Description', 'Amount', 'Currency', 'Vendor', 'Payment Method', 'Has Receipt', 'Company ID', 'Recurring', 'Notes', 'Created', 'Updated'];
+  const header = ['ID', 'Date', 'Category', 'Description', 'Amount', 'Currency', 'Vendor', 'Payment Method', 'Has Receipt', 'Company ID', 'Recurring', 'Notes', 'Created', 'Updated', 'Deleted At'];
   const rows = expenses.map((e) => [
     e.id, e.date, e.category, e.description,
     String(e.amount), e.currency,
@@ -214,12 +226,14 @@ export function expensesToRows(expenses: Expense[]): string[][] {
     e.recurring ? 'Yes' : 'No',
     e.notes || '',
     e.createdAt, e.updatedAt,
+    e.deletedAt || '',
   ]);
   return [header, ...rows];
 }
 
 export function rowsToExpenses(rows: string[][]): Expense[] {
   if (rows.length <= 1) return [];
+  const hasDeletedAt = rows[0].includes('Deleted At');
   return rows.slice(1).map((r) => ({
     id: r[0],
     date: r[1],
@@ -235,6 +249,7 @@ export function rowsToExpenses(rows: string[][]): Expense[] {
     notes: r[11] || undefined,
     createdAt: r[12],
     updatedAt: r[13],
+    deletedAt: hasDeletedAt && r[14] ? r[14] : undefined,
   }));
 }
 

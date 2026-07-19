@@ -5,4 +5,6 @@ export interface Project {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  // Tombstone — see Company.deletedAt
+  deletedAt?: string;
 }
